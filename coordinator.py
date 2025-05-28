@@ -1,4 +1,4 @@
-# File version: 2025-05-28 0.1.4
+# File version: 2025-05-28 0.1.5
 import logging
 from datetime import timedelta
 from typing import Any, cast, Callable
@@ -802,25 +802,40 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         except (ValueError, TypeError):
             charger_hw_max_current_a = 16.0
+
+        # Förbered strängar för villkorliga värden
+        spot_price_kr_str = (
+            "%.2f" % spot_price_kr if spot_price_kr is not None else "N/A"
+        )
+        current_total_price_for_cost_str = (
+            "%.2f" % current_total_price_for_cost
+            if current_total_price_for_cost is not None
+            else "N/A"
+        )
+        solar_production_w_str = (
+            "%.0f" % solar_production_w if solar_production_w is not None else "N/A"
+        )
+        house_consumption_w_str = (
+            "%.0f" % house_consumption_w if house_consumption_w is not None else "N/A"
+        )
+
         _LOGGER.debug(
             "Indata: Status: %s, HuvudSwitch: %s, PrisLaddPå: %s, PrisSchema: %s, MaxSpotPrisInst: %.2f kr, AktSpotPris: %s kr, AktTotalPrisKostn: %s kr, SolLaddPå: %s, SolSchema: %s, SolBuffer: %.0fW, SolProd: %sW, HusFörbrSens: %sW, EVLaddEffSens: %.0fW, MaxLaddboxA: %.1fA, MinSolA: %.1fA, is_controlled_now: %s, last_status: %s, proactive_done: %s",
             current_charger_status,
             charger_main_enabled_state,
             is_smart_charging_switch_on,
             is_price_time_schedule_active,
-            max_price_allowed,
-            "%.2f" % spot_price_kr if spot_price_kr is not None else "N/A",
-            "%.2f" % current_total_price_for_cost
-            if current_total_price_for_cost is not None
-            else "N/A",
+            max_price_allowed,  # Direkt float för %.2f
+            spot_price_kr_str,  # Färdig sträng för %s
+            current_total_price_for_cost_str,  # Färdig sträng för %s
             is_solar_charging_switch_on,
             is_solar_schedule_active,
-            solar_buffer_w,
-            "%.0f" % solar_production_w if solar_production_w is not None else "N/A",
-            "%.0f" % house_consumption_w if house_consumption_w is not None else "N/A",
+            solar_buffer_w,  # Direkt float för %.0f
+            solar_production_w_str,  # Färdig sträng för %s
+            house_consumption_w_str,  # Färdig sträng för %s
             ev_power_w,
             charger_hw_max_current_a,
-            min_solar_current_a,
+            min_solar_current_a,  # Direkta floats
             self.is_smart_charging_controlled_now,
             self._last_charger_status,
             self._proactive_pause_done_this_connection,
@@ -880,7 +895,7 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
                     if current_soc >= self.target_soc_limit:
                         soc_limit_prevents_charging = True
-                        reason_for_action = f"Laddningsgräns nådd (Nuvarande: {current_soc}% >= Mål: {self.target_soc_limit}%). Ingen laddning."  # f-string ok för info-nivå
+                        reason_for_action = f"Laddningsgräns nådd (Nuvarande: {current_soc}% >= Mål: {self.target_soc_limit}%). Ingen laddning."
                         _LOGGER.info(reason_for_action)
                 except (ValueError, TypeError):
                     _LOGGER.warning(
@@ -911,11 +926,11 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         new_intended_active_control_mode = "PRIS_TID"
                         target_charge_current_a = charger_hw_max_current_a
                         should_charge_flag = True
-                        price_time_reason_intermediate = f"Pris/Tid OK (Spot {spot_price_kr:.2f}kr <= Max {max_price_allowed:.2f}kr). Mål: {target_charge_current_a:.0f}A."
+                        price_time_reason_intermediate = f"Pris/Tid OK (Spot {spot_price_kr_str}kr <= Max {max_price_allowed:.2f}kr). Mål: {target_charge_current_a:.0f}A."
                     elif spot_price_kr is None:
                         price_time_reason_intermediate = f"Pris/Tid: Spotpris saknas (Max: {max_price_allowed:.2f}kr)."
                     else:
-                        price_time_reason_intermediate = f"Pris/Tid: Spotpris ({spot_price_kr:.2f}kr) för högt (Max: {max_price_allowed:.2f}kr)."
+                        price_time_reason_intermediate = f"Pris/Tid: Spotpris ({spot_price_kr_str}kr) för högt (Max: {max_price_allowed:.2f}kr)."
                 else:
                     price_time_reason_intermediate = f"Pris/Tid: Schema ({self.time_schedule_entity_id or 'ej definierat'}) ej aktivt."
                 _LOGGER.info(
@@ -942,9 +957,9 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             solar_production_w - other_house_w - solar_buffer_w
                         )
                         _LOGGER.debug(
-                            "Sol (dämpad): Sol=%.0fW, HusSens=%.0fW, EVOffsetSol=%.0fW, AnnatHus=%.0fW, Buffer=%.0fW, Tillgängligt=%.0fW",
-                            solar_production_w,
-                            house_consumption_w,
+                            "Sol (dämpad): Sol=%sW, HusSens=%sW, EVOffsetSol=%.0fW, AnnatHus=%.0fW, Buffer=%.0fW, Tillgängligt=%.0fW",
+                            solar_production_w_str,
+                            house_consumption_w_str,
                             ev_offset_for_solar_calc,
                             other_house_w,
                             solar_buffer_w,
@@ -1270,7 +1285,6 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if "öre" in unit or "ore" in unit
                     else price_per_kwh
                 )
-            # Ändrat från elif till if eftersom föregående if har return
             if "öre/kwh" in unit or "ore/kwh" in unit:
                 return price_val / 100.0
             if any(
@@ -1290,7 +1304,6 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     spot_price_entity_id,
                 )
                 return price_val
-            # else-block för sista fallet
             _LOGGER.warning(
                 "Okänd enhet '%s' för spotprissensor %s. Antar öre/kWh om numeriskt, annars None.",
                 unit if unit else "saknas",
@@ -1344,30 +1357,30 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             if "öre/kwh" in unit or "ore/kwh" in unit:
                 return val / 100.0
-            # Ändrat från elif till if
-            if any(
+            elif any(
                 u in unit for u in ["sek/kwh", "nok/kwh", "dkk/kwh", "kr/kwh", "/kwh"]
             ):
                 return val
-            if unit in ["sek", "nok", "dkk", "kr"]:
+            elif unit in ["sek", "nok", "dkk", "kr"]:
                 _LOGGER.warning(
                     "Påslagsentitet %s har enhet '%s' utan /kWh. Antar kr/kWh.",
                     surcharge_entity_id,
                     unit,
                 )
                 return val
-            # else-block för sista fallet
-            if unit and unit != "":
-                _LOGGER.warning(
-                    "Okänd enhet '%s' för påslagsentitet %s. Antar kr/kWh.",
-                    unit,
-                    surcharge_entity_id,
-                )
-            elif not unit:
-                _LOGGER.info(
-                    "Påslagsentitet %s saknar enhet. Antar kr/kWh.", surcharge_entity_id
-                )
-            return val
+            else:
+                if unit and unit != "":
+                    _LOGGER.warning(
+                        "Okänd enhet '%s' för påslagsentitet %s. Antar kr/kWh.",
+                        unit,
+                        surcharge_entity_id,
+                    )
+                elif not unit:
+                    _LOGGER.info(
+                        "Påslagsentitet %s saknar enhet. Antar kr/kWh.",
+                        surcharge_entity_id,
+                    )
+                return val
         except (ValueError, TypeError):
             _LOGGER.warning(
                 "Kunde inte konvertera påslagsvärde '%s' från %s, antar 0.0 kr/kWh.",
@@ -1459,20 +1472,19 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             unit = cast(
                 str, state_obj.attributes.get("unit_of_measurement", "")
             ).lower()
-            # Använd 'in' för multipel jämförelse
             if unit in (UnitOfPower.KILO_WATT, "kw"):
                 return val * 1000.0
-            # Ändrat från elif till if
+
             if unit in (UnitOfPower.WATT, "w"):
                 return val
-            # else-block för sista fallet
-            _LOGGER.warning(
-                "Okänd enhet '%s' för effektsensor %s (värde: %s), antar Watt.",
-                unit,
-                entity_id,
-                val,
-            )
-            return val
+            else:
+                _LOGGER.warning(
+                    "Okänd enhet '%s' för effektsensor %s (värde: %s), antar Watt.",
+                    unit,
+                    entity_id,
+                    val,
+                )
+                return val
         except (ValueError, TypeError):
             _LOGGER.warning(
                 "Kunde inte konvertera effektvärde '%s' från %s.",

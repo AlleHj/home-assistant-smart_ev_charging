@@ -29,6 +29,12 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.5 (2025-05-28)
+* **Kodförbättring**: Ytterligare åtgärder för Pylint/linter-varningar i `coordinator.py`:
+    * Korrigerat logganrop med komplexa f-strängar till att använda korrekta format specifiers och argument (lazy logging).
+    * Justerat `if/elif`-strukturer i `_get_surcharge_in_kr_kwh` och `_get_power_value` för att tydligare hantera returvärden i `else`-block och undvika "Consider moving this statement to an `else` block"-varningar.
+* **Dokumentation**: Uppdaterade filversionskommentar i `coordinator.py` och `manifest.json`.
+
 ### Version 0.1.4 (2025-05-28)
 * **Kodförbättring**:
     * Åtgärdat Pylint/linter-varningar i `coordinator.py`:
