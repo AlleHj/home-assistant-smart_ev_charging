@@ -10,6 +10,7 @@ Detta är en anpassad integration (custom component) för Home Assistant som mö
 * **Sessionsdata**: Sensorer för energi och kostnad per laddningssession.
 * **Anpassningsbara entiteter**: Skapar switchar och nummerinmatningar för enkel kontroll via Home Assistant UI.
 * **Debug-läge**: Möjlighet att aktivera detaljerad loggning för felsökning.
+* **Svenska texter i UI**: Konfigurationsflödet använder svenska texter via translations-fil.
 
 ## Installation
 1.  Se till att du har [HACS (Home Assistant Community Store)](https://hacs.xyz/) installerat (rekommenderat), eller installera manuellt.
@@ -18,7 +19,7 @@ Detta är en anpassad integration (custom component) för Home Assistant som mö
     * Installera integrationen.
 3.  **Manuell Installation:**
     * Ladda ner den senaste versionen från [GitHub-repot](https://github.com/AlleHj/home-assistant-smart_ev_charging).
-    * Kopiera innehållet i `custom_components/smart_ev_charging/` till din Home Assistant-konfigurationsmapp under `<HA_config_mapp>/custom_components/smart_ev_charging/`.
+    * Kopiera innehållet i `custom_components/smart_ev_charging/` (inklusive den nya `translations`-mappen) till din Home Assistant-konfigurationsmapp under `<HA_config_mapp>/custom_components/smart_ev_charging/`.
 4.  Starta om Home Assistant.
 5.  Gå till "Inställningar" -> "Enheter & Tjänster" -> "Lägg till Integration" och sök efter "Avancerad Elbilsladdning".
 6.  Följ konfigurationsguiden. Detaljerad information om varje parameter finns i [HELP.md](HELP.md).
@@ -29,11 +30,20 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.7 (2025-05-28)
+* **Lokalisering**: Infört en `translations/sv.json`-fil för att hantera alla texter i konfigurations- och alternativflödet. Detta säkerställer att UI:t visas helt på svenska.
+* **Kodrefaktorering**: `config_flow.py` har skrivits om för att använda `CONF_`-konstanter som nycklar i schemat, vilket är standardpraxis när man använder translations-filer. Manuell mappning av etiketter har tagits bort.
+* **Dokumentation**: Uppdaterat filversionskommentarer och `manifest.json`. Installationsinstruktioner i README har uppdaterats för att inkludera `translations`-mappen.
+
+### Version 0.1.6 (2025-05-28)
+* **UI Förbättring**: Uppdaterat `config_flow.py` för att visa tydliga svenska etiketter för alla konfigurationsfält i användargränssnittet istället för engelska konstansnamn. Detta förbättrar användarvänligheten avsevärt. (Not: Denna metod ersätts nu av translations i 0.1.7).
+* **Dokumentation**: Uppdaterade filversionskommentar i `config_flow.py` och `manifest.json`.
+
 ### Version 0.1.5 (2025-05-28)
 * **Kodförbättring**: Ytterligare åtgärder för Pylint/linter-varningar i `coordinator.py`:
-    * Korrigerat logganrop med komplexa f-strängar till att använda korrekta format specifiers och argument (lazy logging).
+    * Korrigerat logganrop med komplexa f-strängar (specifikt den långa "Indata:"-debugsträngen) till att använda korrekta format specifiers och förformaterade strängargument för villkorliga värden (lazy logging).
     * Justerat `if/elif`-strukturer i `_get_surcharge_in_kr_kwh` och `_get_power_value` för att tydligare hantera returvärden i `else`-block och undvika "Consider moving this statement to an `else` block"-varningar.
-* **Dokumentation**: Uppdaterade filversionskommentar i `coordinator.py` och `manifest.json`.
+* **Dokumentation**: Uppdaterade filversionskommentar i `coordinator.py` och `manifest.json` (manifest versionen förblev 0.1.5).
 
 ### Version 0.1.4 (2025-05-28)
 * **Kodförbättring**:

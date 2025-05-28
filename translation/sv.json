@@ -1,0 +1,66 @@
+{
+  "title": "Avancerad Elbilsladdning",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konfigurera Avancerad Elbilsladdning",
+        "description": "Ange nödvändiga entiteter och inställningar. Se [hjälpdokumentationen]({help_url}) för detaljer om varje fält.",
+        "data": {
+          "charger_device_id": "Easee Laddarenhet",
+          "status_sensor_id": "Statussensor för Laddaren",
+          "charger_enabled_switch_id": "Huvudströmbrytare för Laddboxen",
+          "price_sensor_id": "Elprissensor (Spotpris)",
+          "surcharge_helper_id": "Påslagshjälpare (Avgifter/Moms, kr/kWh)",
+          "time_schedule_entity_id": "Tidsschema för Pris/Tid-laddning",
+          "house_power_sensor_id": "Effektsensor för Huset (W/kW)",
+          "solar_production_sensor_id": "Effektsensor för Solproduktion (W/kW)",
+          "solar_schedule_entity_id": "Tidsschema för Solenergiladdning",
+          "charger_max_current_limit_sensor_id": "Sensor för Laddboxens Max Strömgräns (A)",
+          "ev_power_sensor_id": "Effektsensor för Elbilens Laddning (W/kW)",
+          "ev_soc_sensor_id": "Sensor för Bilens Laddningsnivå (SoC %)",
+          "target_soc_limit": "Övre SoC-gräns för Laddning (%)",
+          "scan_interval_seconds": "Uppdateringsintervall (sekunder)",
+          "debug_logging_enabled": "Aktivera debug-loggning"
+        }
+      }
+    },
+    "error": {
+      "invalid_target_soc": "Ogiltig SoC-gräns. Ange ett värde mellan 0 och 100.",
+      "invalid_scan_interval": "Ogiltigt uppdateringsintervall. Ange ett värde mellan 10 och 3600.",
+      "required_field": "Detta fält är obligatoriskt."
+    },
+    "abort": {
+      "already_configured": "En instans av Avancerad Elbilsladdning är redan konfigurerad."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Alternativ för Avancerad Elbilsladdning",
+        "description": "Justera inställningar för integrationen. Se [hjälpdokumentationen]({help_url}) för detaljer.",
+        "data": {
+          "charger_device_id": "Easee Laddarenhet",
+          "status_sensor_id": "Statussensor för Laddaren",
+          "charger_enabled_switch_id": "Huvudströmbrytare för Laddboxen",
+          "price_sensor_id": "Elprissensor (Spotpris)",
+          "surcharge_helper_id": "Påslagshjälpare (Avgifter/Moms, kr/kWh)",
+          "time_schedule_entity_id": "Tidsschema för Pris/Tid-laddning",
+          "house_power_sensor_id": "Effektsensor för Huset (W/kW)",
+          "solar_production_sensor_id": "Effektsensor för Solproduktion (W/kW)",
+          "solar_schedule_entity_id": "Tidsschema för Solenergiladdning",
+          "charger_max_current_limit_sensor_id": "Sensor för Laddboxens Max Strömgräns (A)",
+          "ev_power_sensor_id": "Effektsensor för Elbilens Laddning (W/kW)",
+          "ev_soc_sensor_id": "Sensor för Bilens Laddningsnivå (SoC %)",
+          "target_soc_limit": "Övre SoC-gräns för Laddning (%)",
+          "scan_interval_seconds": "Uppdateringsintervall (sekunder)",
+          "debug_logging_enabled": "Aktivera debug-loggning"
+        }
+      }
+    },
+    "error": {
+        "invalid_target_soc": "Ogiltig SoC-gräns. Ange ett värde mellan 0 och 100.",
+        "invalid_scan_interval": "Ogiltigt uppdateringsintervall. Ange ett värde mellan 10 och 3600.",
+        "required_field": "Detta fält är obligatoriskt."
+    }
+  }
+}
