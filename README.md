@@ -30,6 +30,10 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.8 (2025-05-28)
+* **Felrättning**: Korrigerat ett `AttributeError` i `config_flow.py` under den initiala konfigurationen (`async_step_user`). Felet uppstod vid byggandet av schemat på grund av felaktig åtkomst till attribut på selector-objekt. Logiken för att bygga `data_schema` i `_build_common_schema` har justerats för att hantera `vol.Required` och `vol.Optional` korrekt för både initial setup och options flow.
+* **Dokumentation**: Uppdaterat filversionskommentar i `config_flow.py` och `manifest.json`.
+
 ### Version 0.1.7 (2025-05-28)
 * **Lokalisering**: Infört en `translations/sv.json`-fil för att hantera alla texter i konfigurations- och alternativflödet. Detta säkerställer att UI:t visas helt på svenska.
 * **Kodrefaktorering**: `config_flow.py` har skrivits om för att använda `CONF_`-konstanter som nycklar i schemat, vilket är standardpraxis när man använder translations-filer. Manuell mappning av etiketter har tagits bort.
