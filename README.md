@@ -30,6 +30,14 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.10 (2025-05-29)
+* **Felrättning**: Korrigerat `RuntimeError: Attribute hass is None` i `sensor.py`. Felet uppstod p.g.a. att `_handle_coordinator_update()` (som anropar `async_write_ha_state()`) anropades från sensorernas `__init__`-metod, vilket är för tidigt. Borttaget detta anrop då `CoordinatorEntity` hanterar detta automatiskt.
+
+### Version 0.1.9 (2025-05-29)
+* **Felrättning**: Korrigerat ett `AttributeError: 'NoneType' object has no attribute 'data'` som uppstod när man försökte öppna alternativflödet (Options Flow). Felet berodde på felaktig åtkomst till `hass`-objektet i `OptionsFlowHandler.__init__`.
+* **Förbättring**: Justerat hur `default`-värden hanteras för `EntitySelector`-fält i `config_flow.py` (`_build_common_schema`), särskilt för valfria fält, för att bättre hantera tomma val och minska risken för "Entity None"-felet vid initial konfiguration. Valfria entitetsfält får nu `""` (tom sträng) som defaultvärde i schemat om inget annat värde finns, vilket `EntitySelector` hanterar bättre än `None` som default i UI. Detta konverteras sedan till `None` när datan sparas.
+* **Förbättring**: Förenklat logiken för att spara options i `OptionsFlowHandler` genom att alltid skicka hela `options_to_save`-objektet. Detta bör mer robust hantera rensning/nollställning av tidigare satta optioner så att de inte felaktigt återkommer.
+
 ### Version 0.1.8 (2025-05-28)
 * **Felrättning**: Korrigerat ett `AttributeError` i `config_flow.py` under den initiala konfigurationen (`async_step_user`). Felet uppstod vid byggandet av schemat på grund av felaktig åtkomst till attribut på selector-objekt. Logiken för att bygga `data_schema` i `_build_common_schema` har justerats för att hantera `vol.Required` och `vol.Optional` korrekt för både initial setup och options flow.
 * **Dokumentation**: Uppdaterat filversionskommentar i `config_flow.py` och `manifest.json`.
