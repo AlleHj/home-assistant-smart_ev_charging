@@ -1,0 +1,10 @@
+{
+  "domain": "smart_ev_charging",
+  "name": "Avancerad Elbilsladdning",
+  "codeowners": ["@ditt_github_anvandarnamn"],
+  "requirements": [],
+  "iot_class": "local_push",
+  "version": "0.1.1",
+  "config_flow": true,
+  "loggers": ["custom_components.smart_ev_charging"]
+}

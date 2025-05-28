@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.[oa]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.dist-info/
+*.egg-info/
+.env
+.venv
+env/
+venv/
+ENV/
+# Home Assistant specifikt (om relevant för din komponent)
+.DS_Store
+Thumbs.db
+# Eventuella lokala konfigurationsfiler du inte vill ha med
+# local_config.yaml
