@@ -1,4 +1,4 @@
-# File version: 2025-05-29 0.1.11
+# File version: 2025-05-29 0.1.12
 """Config flow for Smart EV Charging integration."""
 import logging
 from typing import Any, Dict, OrderedDict
@@ -42,7 +42,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL_SECONDS,
 )
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger(__name__) # Använd logger som matchar den i manifest.json för config_flow
 
 ALL_CONF_KEYS = [
     CONF_CHARGER_DEVICE, CONF_STATUS_SENSOR, CONF_CHARGER_ENABLED_SWITCH_ID,
@@ -149,28 +149,27 @@ class SmartEVChargingOptionsFlowHandler(OptionsFlow):
     ) -> FlowResult:
         """Hanterar alternativen."""
         errors: Dict[str, str] = {}
-        # current_settings används för att fylla i formuläret och som fallback om ett obligatoriskt fält saknas i user_input.
         current_settings = {**self.config_entry.data, **self.config_entry.options}
 
         if user_input is not None:
-            options_to_save = {} # Detta kommer att bli de nya kompletta options
+            # *** NY LOGGRAD FÖR FELSÖKNING ***
+            _LOGGER.debug("OptionsFlow: Mottaget user_input: %s", user_input)
+
+            options_to_save = {}
             validation_ok = True
 
             for conf_key in ALL_CONF_KEYS:
                 value_from_form = user_input.get(conf_key)
 
-                # Hantera varje nyckel baserat på dess typ och krav
                 if conf_key == CONF_DEBUG_LOGGING:
                     options_to_save[conf_key] = isinstance(value_from_form, bool) and value_from_form
 
                 elif conf_key in OPTIONAL_ENTITY_CONF_KEYS:
-                    # Konvertera tom sträng (från EntitySelector om fältet rensas) till None vid sparning.
-                    # Om användaren väljer en entitet, sparas entitets-ID:t.
                     options_to_save[conf_key] = None if value_from_form == "" or value_from_form is None else value_from_form
 
                 elif conf_key == CONF_TARGET_SOC_LIMIT:
                     if value_from_form is None or value_from_form == "" or str(value_from_form).strip() == "":
-                        options_to_save[conf_key] = None # Tillåt att rensa värdet
+                        options_to_save[conf_key] = None
                     else:
                         try:
                             soc_val = float(value_from_form)
@@ -183,7 +182,6 @@ class SmartEVChargingOptionsFlowHandler(OptionsFlow):
 
                 elif conf_key == CONF_SCAN_INTERVAL:
                     if value_from_form is None or value_from_form == "" or str(value_from_form).strip() == "":
-                        # Om användaren rensar fältet, använd default-värdet för integrationen.
                         options_to_save[conf_key] = DEFAULT_SCAN_INTERVAL_SECONDS
                     else:
                         try:
@@ -195,25 +193,17 @@ class SmartEVChargingOptionsFlowHandler(OptionsFlow):
                         except (ValueError, TypeError):
                             errors[conf_key] = "invalid_scan_interval"; validation_ok = False
 
-                # För alla andra nycklar (inklusive de obligatoriska från setup):
-                # Använd värdet från formuläret om det finns.
-                # Detta säkerställer att ändringar i obligatoriska fält också sparas i options.
                 elif value_from_form is not None:
                     options_to_save[conf_key] = value_from_form
 
-                # Om value_from_form är None (t.ex. fältet fanns inte i user_input, osannolikt för definierade fält):
-                # För obligatoriska fält (som definierade i REQUIRED_CONF_SETUP_KEYS), behåll deras nuvarande effektiva värde.
-                # Detta är en säkerhetsåtgärd, men formuläret bör alltid skicka alla definierade fält.
                 elif conf_key in REQUIRED_CONF_SETUP_KEYS:
                     options_to_save[conf_key] = current_settings.get(conf_key)
 
-                # För övriga (valfria) fält som blev None och inte hanterades ovan:
                 else:
                     options_to_save[conf_key] = None
 
 
             if not validation_ok:
-                # Visa formuläret igen med felmeddelanden och ifyllda värden från user_input
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_build_common_schema(current_settings, user_input, is_options_flow=True),
@@ -222,15 +212,12 @@ class SmartEVChargingOptionsFlowHandler(OptionsFlow):
                 )
 
             _LOGGER.debug("OptionsFlow: Sparar options: %s", options_to_save)
-            # Hela options_to_save-objektet sparas. Detta blir config_entry.options.
-            # Home Assistant hanterar att detta överlagrar config_entry.data.
             return self.async_create_entry(title="", data=options_to_save)
 
-        # Första gången formuläret visas (user_input är None)
         return self.async_show_form(
             step_id="init",
             data_schema=_build_common_schema(current_settings, None, is_options_flow=True),
-            errors=errors, # Tom initialt
+            errors=errors,
             description_placeholders={"help_url": HELP_URL_GLOBAL}
         )
 
@@ -247,7 +234,6 @@ class SmartEVChargingConfigFlow(ConfigFlow, domain=DOMAIN):
             data_to_save = {}
             validation_ok = True
 
-            # Iterera ALLA kända konfigurationsnycklar för att bygga data_to_save
             for conf_key in ALL_CONF_KEYS:
                 value = user_input.get(conf_key)
 
@@ -257,7 +243,7 @@ class SmartEVChargingConfigFlow(ConfigFlow, domain=DOMAIN):
                     data_to_save[conf_key] = None if value == "" or value is None else value
                 elif conf_key == CONF_TARGET_SOC_LIMIT:
                     if value is None or value == "" or str(value).strip() == "":
-                        data_to_save[conf_key] = None # Tillåt att vara osatt
+                        data_to_save[conf_key] = None
                     else:
                         try:
                             soc_val = float(value)
@@ -268,7 +254,7 @@ class SmartEVChargingConfigFlow(ConfigFlow, domain=DOMAIN):
                             errors[conf_key] = "invalid_target_soc"; validation_ok = False
                 elif conf_key == CONF_SCAN_INTERVAL:
                     if value is None or value == "" or str(value).strip() == "":
-                        data_to_save[conf_key] = DEFAULT_SCAN_INTERVAL_SECONDS # Default om osatt
+                        data_to_save[conf_key] = DEFAULT_SCAN_INTERVAL_SECONDS
                     else:
                         try:
                             scan_val = int(value)
@@ -277,15 +263,14 @@ class SmartEVChargingConfigFlow(ConfigFlow, domain=DOMAIN):
                             else: data_to_save[conf_key] = scan_val
                         except (ValueError, TypeError):
                             errors[conf_key] = "invalid_scan_interval"; validation_ok = False
-                elif value is not None: # För alla andra fält som har ett värde
+                elif value is not None:
                     data_to_save[conf_key] = value
-                elif conf_key in REQUIRED_CONF_SETUP_KEYS: # Om ett obligatoriskt fält saknas (value är None)
+                elif conf_key in REQUIRED_CONF_SETUP_KEYS:
                      errors[conf_key] = "required_field"; validation_ok = False
-                else: # Andra valfria fält som är None (och inte hanterats specifikt ovan)
+                else:
                     data_to_save[conf_key] = None
 
             if not validation_ok:
-                 # Visa formuläret igen med fel och ifyllda värden
                  return self.async_show_form(
                      step_id="user",
                      data_schema=_build_common_schema({}, user_input, is_options_flow=False),
@@ -294,17 +279,15 @@ class SmartEVChargingConfigFlow(ConfigFlow, domain=DOMAIN):
                  )
 
             _LOGGER.debug("Initial konfigurationsdata att spara: %s", data_to_save)
-            # Sätt ett unikt ID för att bara tillåta en instans (valfritt)
             await self.async_set_unique_id(f"{DOMAIN}_smart_charger_main_instance")
             self._abort_if_unique_id_configured()
 
             return self.async_create_entry(title=DEFAULT_NAME, data=data_to_save)
 
-        # Första gången formuläret visas för initial setup
         return self.async_show_form(
             step_id="user",
             data_schema=_build_common_schema({}, None, is_options_flow=False),
-            errors=errors, # Tom initialt
+            errors=errors,
             description_placeholders={"help_url": HELP_URL_GLOBAL}
         )
 

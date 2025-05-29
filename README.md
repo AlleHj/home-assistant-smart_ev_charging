@@ -30,6 +30,9 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.12 (2025-05-29)
+* **Felsökning**: Lade till utökad debug-loggning i `config_flow.py` (Options Flow) för att logga det `user_input` som tas emot från formuläret. Detta för att bättre kunna analysera varför rensade entitetsfält eventuellt inte sparas korrekt. Ingen ändring i spara-logiken i detta steg.
+
 ### Version 0.1.11 (2025-05-29)
 * **Felrättning**: Justerat logiken i `config_flow.py` (Options Flow) för att säkerställa att ändringar av valfria entitetsfält (t.ex. att rensa ett tidigare satt SoC-sensorvärde) sparas korrekt och inte återgår till tidigare värden. Förtydligat hur `options_to_save` hanterar värden från `user_input` för alla konfigurationsnycklar.
 
