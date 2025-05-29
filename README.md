@@ -30,6 +30,9 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.29 (2025-05-29)
+* **Felrättning (Options Flow)**: Bekräftat att justeringarna i `config_flow.py` (v0.1.28), som ändrade schemadefinitionen för valfria selektorer i Options Flow att använda `description={"suggested_value": ...}` istället för `default=...` (i likhet med en tidigare fungerande version), har löst problemet med att rensade entitetsfält inte sparades korrekt utan återgick till sina gamla värden. Både validering av tomma valfria fält och sparandet av rensade/ändrade fält i Options Flow fungerar nu som förväntat.
+
 ### Version 0.1.28 (2025-05-29)
 * **Förbättring (Config Flow)**: Justerat `_build_common_schema` i `config_flow.py` för att hantera schemadefinition för Options Flow närmare den äldre, fungerande versionen som användaren tillhandahöll. Använder nu `description={"suggested_value": ...}` istället för `default=...` för `vol.Optional` för valfria selektorer i Options Flow, i ett försök att påverka hur frontend skickar data för rensade fält. `vol.Maybe()` behålls för dessa fält för att tillåta `None`.
 * **Rättelse**: Åtgärdat diverse linting-varningar i `config_flow.py` (docstring, dict type hint, implementerat `is_matching`, tagit bort deprecierad `self.config_entry`-tilldelning).
