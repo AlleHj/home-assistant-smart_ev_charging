@@ -30,6 +30,9 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.11 (2025-05-29)
+* **Felrättning**: Justerat logiken i `config_flow.py` (Options Flow) för att säkerställa att ändringar av valfria entitetsfält (t.ex. att rensa ett tidigare satt SoC-sensorvärde) sparas korrekt och inte återgår till tidigare värden. Förtydligat hur `options_to_save` hanterar värden från `user_input` för alla konfigurationsnycklar.
+
 ### Version 0.1.10 (2025-05-29)
 * **Felrättning**: Korrigerat `RuntimeError: Attribute hass is None` i `sensor.py`. Felet uppstod p.g.a. att `_handle_coordinator_update()` (som anropar `async_write_ha_state()`) anropades från sensorernas `__init__`-metod, vilket är för tidigt. Borttaget detta anrop då `CoordinatorEntity` hanterar detta automatiskt.
 

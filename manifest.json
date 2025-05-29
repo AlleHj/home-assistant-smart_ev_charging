@@ -4,7 +4,7 @@
   "codeowners": ["@AllehJ"],
   "requirements": [],
   "iot_class": "local_push",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "config_flow": true,
   "documentation": "https://github.com/AlleHj/home-assistant-smart_ev_charging/blob/master/HELP.md",
   "loggers": ["custom_components.smart_ev_charging"],
