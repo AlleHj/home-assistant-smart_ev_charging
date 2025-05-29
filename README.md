@@ -30,9 +30,12 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.17 (2025-05-29)
+* **Felrättning (Options Flow & Initial Setup)**: Justerat `config_flow.py` (`_build_common_schema`) så att valfria entitetsfält nu använder `vol.Maybe(EntitySelector(...))` och korrekt `default=None` (om fältet är tomt) i schemadefinitionen för både initial konfiguration och alternativflödet. Detta bör förhindra valideringsfelet "Entity None is neither a valid entity ID nor a valid UUID" när dessa fält lämnas tomma eller rensas. Detta kan potentiellt även förbättra situationen där rensade fält i Options Flow inte sparades korrekt, om grundorsaken var relaterad till schema-validering.
+
 ### Version 0.1.16 (2025-05-29)
 * **Felrättning (Initial Setup)**: Justerat `config_flow.py` (`_build_common_schema`) för den initiala konfigurationen. Valfria entitetsfält använder nu `vol.Optional(key, default=None)` och `vol.Maybe(EntitySelector(...))` för att korrekt tillåta att dessa fält lämnas tomma utan att orsaka valideringsfelet "Entity None is neither a valid entity ID nor a valid UUID".
-* **Felsökning (Options Flow)**: Problemet med att rensade entitetsfält i Options Flow inte sparas korrekt (gamla värdet kvarstår) är sannolikt oförändrat. Tidigare loggning indikerar att felet beror på att datan som tas emot från Home Assistants frontend (`user_input`) felaktigt innehåller det gamla värdet. Detta problem ligger troligen utanför denna integrations backend-kod och kan inte åtgärdas härifrån utan att riskera annan funktionalitet.
+* **Felsökning (Options Flow)**: Problemet med att rensade entitetsfält i Options Flow inte sparas korrekt kvarstår troligen. Logganalys tyder starkt på att felet ligger i att datan som tas emot från Home Assistants frontend (`user_input`) felaktigt innehåller det gamla värdet istället för ett tomt värde som indikerar att fältet rensats. Detta problem ligger sannolikt utanför denna integrations backend-kod och kan inte åtgärdas härifrån utan att riskera annan funktionalitet.
 
 ### Version 0.1.15 (2025-05-29)
 * **Felrättning (Initial Setup)**: Justerat `config_flow.py` så att valfria entitetsfält (t.ex. SoC-sensor) under den initiala konfigurationen nu har `None` som schema-default istället för `""`. Detta förhindrar valideringsfelet "Entity is neither a valid entity ID nor a valid UUID" om dessa fält lämnas tomma av användaren.
