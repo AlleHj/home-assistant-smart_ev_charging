@@ -30,8 +30,12 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.15 (2025-05-29)
+* **Felrättning (Initial Setup)**: Justerat `config_flow.py` så att valfria entitetsfält (t.ex. SoC-sensor) under den initiala konfigurationen nu har `None` som schema-default istället för `""`. Detta förhindrar valideringsfelet "Entity is neither a valid entity ID nor a valid UUID" om dessa fält lämnas tomma av användaren.
+* **Felsökning (Options Flow)**: Problemet med att rensade entitetsfält i Options Flow inte sparas korrekt kvarstår troligen. Logganalys tyder starkt på att felet ligger i att datan som tas emot från Home Assistants frontend (`user_input`) felaktigt innehåller det gamla värdet istället för ett tomt värde som indikerar att fältet rensats. Detta problem ligger sannolikt utanför denna integrations backend-kod. Ingen ändring i spara-logiken för Options Flow i detta steg.
+
 ### Version 0.1.14 (2025-05-29)
-* **Felsökning**: Återställt `config_flow.py` från diagnostisk loggning. Analys av loggar pekar på att felet där rensade entitetsfält i Options Flow inte sparas korrekt beror på att datan som tas emot från Home Assistants frontend (`user_input`) innehåller det gamla värdet istället för ett tomt värde. Detta problem ligger troligen utanför denna integrations backend-kod.
+* **Felsökning**: Återställt `config_flow.py` från diagnostisk loggning. Analys av loggar pekar på att felet där rensade entitetsfält i Options Flow inte sparas korrekt beror på att datan som tas emot från Home Assistants frontend (`user_input`) innehåller det gamla värdet istället för ett tomt värde som indikerar att fältet rensats. Detta problem ligger troligen utanför denna integrations backend-kod.
 
 ### Version 0.1.13 (2025-05-29)
 * **Felsökning**: Tog bort extra debug-loggning för `user_input` i `config_flow.py` (Options Flow) då diagnos indikerar att felet med att spara rensade entitetsfält troligen ligger i hur frontend skickar data, inte i hur backend tar emot eller bearbetar den. Komponentens Python-kod hanterar inkommande data korrekt.
