@@ -1,4 +1,4 @@
-# File version: 2025-05-29 0.1.13
+# File version: 2025-05-29 0.1.14
 """Config flow for Smart EV Charging integration."""
 import logging
 from typing import Any, Dict, OrderedDict
@@ -143,8 +143,8 @@ class SmartEVChargingOptionsFlowHandler(OptionsFlow):
         current_settings = {**self.config_entry.data, **self.config_entry.options}
 
         if user_input is not None:
-            # Föregående version (0.1.12) hade en debug-log här för user_input.
-            # Den tas bort nu då diagnosen pekar på att user_input självt är problemet.
+            # Den diagnostiska loggraden för user_input från v0.1.12 är borttagen här.
+            # Analys pekar på att user_input från frontend inte reflekterar rensade fält korrekt.
 
             options_to_save = {}
             validation_ok = True
@@ -192,7 +192,6 @@ class SmartEVChargingOptionsFlowHandler(OptionsFlow):
 
                 else:
                     options_to_save[conf_key] = None
-
 
             if not validation_ok:
                 return self.async_show_form(

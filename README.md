@@ -30,6 +30,9 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.14 (2025-05-29)
+* **Felsökning**: Återställt `config_flow.py` från diagnostisk loggning. Analys av loggar pekar på att felet där rensade entitetsfält i Options Flow inte sparas korrekt beror på att datan som tas emot från Home Assistants frontend (`user_input`) innehåller det gamla värdet istället för ett tomt värde. Detta problem ligger troligen utanför denna integrations backend-kod.
+
 ### Version 0.1.13 (2025-05-29)
 * **Felsökning**: Tog bort extra debug-loggning för `user_input` i `config_flow.py` (Options Flow) då diagnos indikerar att felet med att spara rensade entitetsfält troligen ligger i hur frontend skickar data, inte i hur backend tar emot eller bearbetar den. Komponentens Python-kod hanterar inkommande data korrekt.
 
