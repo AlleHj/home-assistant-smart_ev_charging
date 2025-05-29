@@ -1,4 +1,4 @@
-# File version: 2025-05-29 0.1.15
+# File version: 2025-05-29 0.1.16
 """Config flow for Smart EV Charging integration."""
 import logging
 from typing import Any, Dict, OrderedDict
@@ -20,6 +20,7 @@ from homeassistant.helpers.selector import (
     BooleanSelectorConfig,
 )
 from homeassistant.components.sensor import SensorDeviceClass
+import homeassistant.helpers.config_validation as cv # Importera för vol.Maybe
 
 from .const import (
     DOMAIN,
@@ -73,79 +74,82 @@ def _build_common_schema(
 ) -> vol.Schema:
     """Bygger upp ett gemensamt Voluptuous-schema med CONF_ konstanter som nycklar."""
 
-    def _get_current_value(conf_key: str, default_val: Any = None, for_setup_optional_entity: bool = False) -> Any:
+    def _get_current_value(conf_key: str, default_val: Any = None) -> Any:
+        # Om vi populerar om formuläret efter ett fel, använd värdet från user_input
         if user_input_for_repopulating is not None and conf_key in user_input_for_repopulating:
-            form_val = user_input_for_repopulating[conf_key]
-            # Om formuläret skickade "" för en entitet som repopuleras, behåll "" för UI.
-            # Annars, om det är None (kan hända för nummerfält), låt det vara None.
-            if conf_key in OPTIONAL_ENTITY_CONF_KEYS and form_val == "":
-                 return ""
-            return form_val
+            return user_input_for_repopulating[conf_key]
 
+        # Annars, hämta från befintliga inställningar (current_settings)
         existing_val = current_settings.get(conf_key, default_val)
 
+        # För EntitySelectors i UI är "" (tom sträng) ofta bättre än None för att visa ett tomt fält,
+        # om det inte är första gången setup-formuläret visas för ett valfritt entitetsfält.
         if conf_key in OPTIONAL_ENTITY_CONF_KEYS and existing_val is None:
-            # För Options Flow och för repopulering av Setup Flow, använd "" för UI om värdet är None.
-            # För *första* visningen av Setup Flow, om for_setup_optional_entity är sant, vill vi ha None.
-            return "" if not for_setup_optional_entity else None
+            if is_options_flow or user_input_for_repopulating is not None: # Options flow eller setup repopulering
+                return ""
+            else: # Första gången setup-formuläret visas, vill vi ha None för schema default=None
+                return None
         return existing_val
 
     defined_fields = OrderedDict()
+    # Bestäm om det är den allra första visningen av setup-formuläret (inte en repopulering)
+    is_initial_setup_display = not is_options_flow and user_input_for_repopulating is None
+
     # Obligatoriska fält (blir vol.Optional med default i options flow)
-    defined_fields[vol.Required(CONF_CHARGER_DEVICE, default=_get_current_value(CONF_CHARGER_DEVICE, ""))] = DeviceSelector(DeviceSelectorConfig(integration="easee"))
-    defined_fields[vol.Required(CONF_STATUS_SENSOR, default=_get_current_value(CONF_STATUS_SENSOR, ""))] = EntitySelector(EntitySelectorConfig(domain="sensor", multiple=False))
-    defined_fields[vol.Required(CONF_CHARGER_ENABLED_SWITCH_ID, default=_get_current_value(CONF_CHARGER_ENABLED_SWITCH_ID, ""))] = EntitySelector(EntitySelectorConfig(domain="switch", multiple=False))
-    defined_fields[vol.Required(CONF_PRICE_SENSOR, default=_get_current_value(CONF_PRICE_SENSOR, ""))] = EntitySelector(EntitySelectorConfig(domain="sensor", multiple=False))
+    defined_fields[vol.Required(CONF_CHARGER_DEVICE, default=_get_current_value(CONF_CHARGER_DEVICE))] = DeviceSelector(DeviceSelectorConfig(integration="easee"))
+    defined_fields[vol.Required(CONF_STATUS_SENSOR, default=_get_current_value(CONF_STATUS_SENSOR))] = EntitySelector(EntitySelectorConfig(domain="sensor", multiple=False))
+    defined_fields[vol.Required(CONF_CHARGER_ENABLED_SWITCH_ID, default=_get_current_value(CONF_CHARGER_ENABLED_SWITCH_ID))] = EntitySelector(EntitySelectorConfig(domain="switch", multiple=False))
+    defined_fields[vol.Required(CONF_PRICE_SENSOR, default=_get_current_value(CONF_PRICE_SENSOR))] = EntitySelector(EntitySelectorConfig(domain="sensor", multiple=False))
 
     # Valfria fält
-    # Notera specialhantering för for_setup_optional_entity i _get_current_value för initial setup.
-    is_initial_setup = not is_options_flow and user_input_for_repopulating is None
-
-    defined_fields[vol.Optional(CONF_SURCHARGE_HELPER, default=_get_current_value(CONF_SURCHARGE_HELPER, "", for_setup_optional_entity=is_initial_setup))] = EntitySelector(EntitySelectorConfig(domain=["sensor", "input_number"], multiple=False))
-    defined_fields[vol.Optional(CONF_TIME_SCHEDULE_ENTITY, default=_get_current_value(CONF_TIME_SCHEDULE_ENTITY, "", for_setup_optional_entity=is_initial_setup))] = EntitySelector(EntitySelectorConfig(domain="schedule", multiple=False))
-    defined_fields[vol.Optional(CONF_HOUSE_POWER_SENSOR, default=_get_current_value(CONF_HOUSE_POWER_SENSOR, "", for_setup_optional_entity=is_initial_setup))] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.POWER, multiple=False))
-    defined_fields[vol.Optional(CONF_SOLAR_PRODUCTION_SENSOR, default=_get_current_value(CONF_SOLAR_PRODUCTION_SENSOR, "", for_setup_optional_entity=is_initial_setup))] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.POWER, multiple=False))
-    defined_fields[vol.Optional(CONF_SOLAR_SCHEDULE_ENTITY, default=_get_current_value(CONF_SOLAR_SCHEDULE_ENTITY, "", for_setup_optional_entity=is_initial_setup))] = EntitySelector(EntitySelectorConfig(domain="schedule", multiple=False))
-    defined_fields[vol.Optional(CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR, default=_get_current_value(CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR, "", for_setup_optional_entity=is_initial_setup))] = EntitySelector(EntitySelectorConfig(domain="sensor", multiple=False))
-    defined_fields[vol.Optional(CONF_EV_POWER_SENSOR, default=_get_current_value(CONF_EV_POWER_SENSOR, "", for_setup_optional_entity=is_initial_setup))] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.POWER, multiple=False))
-    defined_fields[vol.Optional(CONF_EV_SOC_SENSOR, default=_get_current_value(CONF_EV_SOC_SENSOR, "", for_setup_optional_entity=is_initial_setup))] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.BATTERY, multiple=False))
+    # Notera att _get_current_value nu kan returnera None för is_initial_setup_display tack vare ändringen ovan.
+    defined_fields[vol.Optional(CONF_SURCHARGE_HELPER, default=_get_current_value(CONF_SURCHARGE_HELPER))] = EntitySelector(EntitySelectorConfig(domain=["sensor", "input_number"], multiple=False))
+    defined_fields[vol.Optional(CONF_TIME_SCHEDULE_ENTITY, default=_get_current_value(CONF_TIME_SCHEDULE_ENTITY))] = EntitySelector(EntitySelectorConfig(domain="schedule", multiple=False))
+    defined_fields[vol.Optional(CONF_HOUSE_POWER_SENSOR, default=_get_current_value(CONF_HOUSE_POWER_SENSOR))] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.POWER, multiple=False))
+    defined_fields[vol.Optional(CONF_SOLAR_PRODUCTION_SENSOR, default=_get_current_value(CONF_SOLAR_PRODUCTION_SENSOR))] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.POWER, multiple=False))
+    defined_fields[vol.Optional(CONF_SOLAR_SCHEDULE_ENTITY, default=_get_current_value(CONF_SOLAR_SCHEDULE_ENTITY))] = EntitySelector(EntitySelectorConfig(domain="schedule", multiple=False))
+    defined_fields[vol.Optional(CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR, default=_get_current_value(CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR))] = EntitySelector(EntitySelectorConfig(domain="sensor", multiple=False))
+    defined_fields[vol.Optional(CONF_EV_POWER_SENSOR, default=_get_current_value(CONF_EV_POWER_SENSOR))] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.POWER, multiple=False))
+    defined_fields[vol.Optional(CONF_EV_SOC_SENSOR, default=_get_current_value(CONF_EV_SOC_SENSOR))] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.BATTERY, multiple=False))
 
     defined_fields[vol.Optional(CONF_TARGET_SOC_LIMIT, default=_get_current_value(CONF_TARGET_SOC_LIMIT))] = NumberSelector(NumberSelectorConfig(min=0, max=100, step=0.5, mode=NumberSelectorMode.BOX, unit_of_measurement="%"))
     defined_fields[vol.Optional(CONF_SCAN_INTERVAL, default=_get_current_value(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_SECONDS))] = NumberSelector(NumberSelectorConfig(min=10, max=3600, step=1, mode=NumberSelectorMode.BOX, unit_of_measurement="sekunder"))
     defined_fields[vol.Optional(CONF_DEBUG_LOGGING, default=_get_current_value(CONF_DEBUG_LOGGING, False))] = BooleanSelector(BooleanSelectorConfig())
 
     final_schema_dict = OrderedDict()
-    for key_marker, selector_value in defined_fields.items():
+    for key_marker, selector_value_original in defined_fields.items():
         conf_key_str = str(key_marker.schema)
-        # Hämta default-värdet som bestämts av _get_current_value för denna kontext (setup/options, repopulering etc.)
-        # Detta är det värde som visas i UI:t.
-        ui_default_value = key_marker.default
+        ui_default_value = key_marker.default # Detta är värdet som visas i UI (kan vara "" för tomma entitetsfält)
 
-        if is_options_flow:
-            final_schema_dict[vol.Optional(conf_key_str, default=ui_default_value)] = selector_value
-        else: # Initial setup flow
-            # För initial setup (inte repopulering från fel)
-            if user_input_for_repopulating is None:
-                if conf_key_str in OPTIONAL_ENTITY_CONF_KEYS:
-                    # För valfria entitetsfält vid första setup, använd None som default i schemat
-                    # för att undvika valideringsfel om fältet lämnas tomt.
-                    final_schema_dict[vol.Optional(conf_key_str, default=None)] = selector_value
-                elif conf_key_str == CONF_TARGET_SOC_LIMIT:
-                    final_schema_dict[vol.Optional(conf_key_str, default=vol.UNDEFINED)] = selector_value
+        selector_value_final = selector_value_original
+        # För valfria entitetsfält under initial setup (första visningen), kapsla selektorn med vol.Maybe
+        # och sätt schema-default till None för att tillåta att fältet är helt tomt/None.
+        if is_initial_setup_display and conf_key_str in OPTIONAL_ENTITY_CONF_KEYS:
+            # ui_default_value kommer att vara None här tack vare _get_current_value logiken
+            final_schema_dict[vol.Optional(conf_key_str, default=None)] = vol.Maybe(selector_value_original)
+
+        elif is_options_flow:
+            final_schema_dict[vol.Optional(conf_key_str, default=ui_default_value)] = selector_value_original
+
+        else: # Initial setup, men repopulering från fel, eller icke-entitetsfält
+            if user_input_for_repopulating is None: # Första visningen (men inte optional entity)
+                if conf_key_str == CONF_TARGET_SOC_LIMIT:
+                    final_schema_dict[vol.Optional(conf_key_str, default=vol.UNDEFINED)] = selector_value_original
                 elif conf_key_str == CONF_SCAN_INTERVAL:
-                    final_schema_dict[vol.Optional(conf_key_str, default=DEFAULT_SCAN_INTERVAL_SECONDS)] = selector_value
+                    final_schema_dict[vol.Optional(conf_key_str, default=DEFAULT_SCAN_INTERVAL_SECONDS)] = selector_value_original
                 elif conf_key_str == CONF_DEBUG_LOGGING:
-                    final_schema_dict[vol.Optional(conf_key_str, default=False)] = selector_value
+                    final_schema_dict[vol.Optional(conf_key_str, default=False)] = selector_value_original
                 elif conf_key_str in REQUIRED_CONF_SETUP_KEYS:
-                    # Obligatoriska fält, tvinga val (ingen ifylld default)
-                    final_schema_dict[vol.Required(conf_key_str, default=vol.UNDEFINED)] = selector_value
-                else: # Andra (icke-entitet) valfria fält
-                    final_schema_dict[vol.Optional(conf_key_str, default=ui_default_value)] = selector_value # Använd ui_default (t.ex. för nummer)
-            else: # Repopulerar setup-formulär efter fel, använd UI-default (som innehåller användarens tidigare input)
+                    final_schema_dict[vol.Required(conf_key_str, default=vol.UNDEFINED)] = selector_value_original
+                else: # Andra valfria fält (icke-entitet)
+                    final_schema_dict[vol.Optional(conf_key_str, default=ui_default_value)] = selector_value_original
+            else: # Repopulerar setup-formulär efter fel
                 if conf_key_str in REQUIRED_CONF_SETUP_KEYS:
-                    final_schema_dict[vol.Required(conf_key_str, default=ui_default_value)] = selector_value
-                else:
-                    final_schema_dict[vol.Optional(conf_key_str, default=ui_default_value)] = selector_value
+                    final_schema_dict[vol.Required(conf_key_str, default=ui_default_value)] = selector_value_original
+                elif conf_key_str in OPTIONAL_ENTITY_CONF_KEYS: # Valfritt entitetsfält vid repopulering
+                    final_schema_dict[vol.Optional(conf_key_str, default=ui_default_value)] = vol.Maybe(selector_value_original)
+                else: # Andra valfria fält vid repopulering
+                    final_schema_dict[vol.Optional(conf_key_str, default=ui_default_value)] = selector_value_original
 
     return vol.Schema(final_schema_dict)
 
@@ -165,9 +169,9 @@ class SmartEVChargingOptionsFlowHandler(OptionsFlow):
         current_settings = {**self.config_entry.data, **self.config_entry.options}
 
         if user_input is not None:
-            # Tidigare version (0.1.12) loggade user_input här.
-            # Baserat på analys verkar problemet med Options Flow vara att user_input från frontend
-            # inte korrekt reflekterar att ett entitetsfält har rensats, utan skickar det gamla värdet.
+            # Problemet med att Options Flow inte sparar rensade entitetsfält korrekt
+            # kvarstår troligen p.g.a. att 'user_input' från frontend inte korrekt
+            # reflekterar att fältet rensats, utan skickar det gamla värdet.
             # Denna backend-kod kan inte åtgärda felaktig indata från frontend.
 
             options_to_save = {}
@@ -211,15 +215,13 @@ class SmartEVChargingOptionsFlowHandler(OptionsFlow):
                 elif value_from_form is not None:
                     options_to_save[conf_key] = value_from_form
 
-                elif conf_key in REQUIRED_CONF_SETUP_KEYS: # Om formulärdata saknas för ett "obligatoriskt" fält
-                    options_to_save[conf_key] = current_settings.get(conf_key) # Behåll befintligt värde
+                elif conf_key in REQUIRED_CONF_SETUP_KEYS:
+                    options_to_save[conf_key] = current_settings.get(conf_key)
 
-                else: # Andra valfria fält där formulärdata är None
+                else:
                     options_to_save[conf_key] = None
 
-
             if not validation_ok:
-                # Visa formuläret igen med fel och ifyllda värden från user_input
                 return self.async_show_form(
                     step_id="init",
                     data_schema=_build_common_schema(current_settings, user_input, is_options_flow=True),
@@ -230,7 +232,6 @@ class SmartEVChargingOptionsFlowHandler(OptionsFlow):
             _LOGGER.debug("OptionsFlow: Sparar options: %s", options_to_save)
             return self.async_create_entry(title="", data=options_to_save)
 
-        # Första gången Options Flow visas
         return self.async_show_form(
             step_id="init",
             data_schema=_build_common_schema(current_settings, None, is_options_flow=True),
@@ -248,6 +249,7 @@ class SmartEVChargingConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: Dict[str, str] = {}
 
         if user_input is not None:
+            _LOGGER.debug("ConfigFlow User Step: Mottaget user_input: %s", user_input)
             data_to_save = {}
             validation_ok = True
 
@@ -257,8 +259,7 @@ class SmartEVChargingConfigFlow(ConfigFlow, domain=DOMAIN):
                 if conf_key == CONF_DEBUG_LOGGING:
                     data_to_save[conf_key] = isinstance(value, bool) and value
                 elif conf_key in OPTIONAL_ENTITY_CONF_KEYS:
-                    # Förväntar None från formuläret om inget valts (pga schema default=None)
-                    # eller en giltig entitetssträng.
+                    # user_input bör nu ha None för tomma valfria entitetsfält pga schemaändring (default=None, vol.Maybe)
                     data_to_save[conf_key] = None if value == "" or value is None else value
                 elif conf_key == CONF_TARGET_SOC_LIMIT:
                     if value is None or value == "" or str(value).strip() == "":
@@ -286,13 +287,12 @@ class SmartEVChargingConfigFlow(ConfigFlow, domain=DOMAIN):
                     data_to_save[conf_key] = value
                 elif conf_key in REQUIRED_CONF_SETUP_KEYS:
                      errors[conf_key] = "required_field"; validation_ok = False
-                else:
+                else: # Andra valfria fält som är None (och inte hanterats specifikt ovan)
                     data_to_save[conf_key] = None
 
             if not validation_ok:
                  return self.async_show_form(
                      step_id="user",
-                     # Använd user_input för att repopulera formuläret vid fel
                      data_schema=_build_common_schema({}, user_input, is_options_flow=False),
                      errors=errors,
                      description_placeholders={"help_url": HELP_URL_GLOBAL}
@@ -304,10 +304,9 @@ class SmartEVChargingConfigFlow(ConfigFlow, domain=DOMAIN):
 
             return self.async_create_entry(title=DEFAULT_NAME, data=data_to_save)
 
-        # Första gången formuläret för initial setup visas
         return self.async_show_form(
             step_id="user",
-            data_schema=_build_common_schema({}, None, is_options_flow=False),
+            data_schema=_build_common_schema({}, None, is_options_flow=False), # current_settings är {} för helt ny setup
             errors=errors,
             description_placeholders={"help_url": HELP_URL_GLOBAL}
         )
