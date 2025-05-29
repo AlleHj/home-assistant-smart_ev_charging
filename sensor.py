@@ -1,4 +1,4 @@
-# File version: 2025-05-29 0.1.10
+# File version: 2025-05-29 0.1.31
 import logging
 from typing import Any
 
@@ -13,13 +13,13 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.const import STATE_UNKNOWN
-import homeassistant.util.dt as dt_util
+# import homeassistant.util.dt as dt_util # Behövs inte längre här
 
 from .const import (
     DOMAIN,
     DEFAULT_NAME,
-    ENTITY_ID_SUFFIX_SESSION_ENERGY_SENSOR,
-    ENTITY_ID_SUFFIX_SESSION_COST_SENSOR,
+    # ENTITY_ID_SUFFIX_SESSION_ENERGY_SENSOR, # Borttagen
+    # ENTITY_ID_SUFFIX_SESSION_COST_SENSOR, # Borttagen
     ENTITY_ID_SUFFIX_ACTIVE_CONTROL_MODE_SENSOR,
 )
 from .coordinator import SmartEVChargingCoordinator
@@ -39,156 +39,88 @@ async def async_setup_entry(
 
     if not coordinator:
         _LOGGER.error(
-            "Koordinatorn är inte tillgänglig för sensor-setup! Kontrollera __init__.py och koordinatorns initiering."
+            "Koordinatorn är inte tillgänglig för sensor-setup! Detta bör inte hända."
         )
         return
 
-    sensors_to_add = [
-        SmartChargingSessionEnergySensor(config_entry, coordinator),
-        SmartChargingSessionCostSensor(config_entry, coordinator),
+    entities_to_add = [
         ActiveControlModeSensor(config_entry, coordinator),
+        # SessionEnergySensor och SessionCostSensor tas bort
     ]
-    async_add_entities(sensors_to_add, False)
-    _LOGGER.debug("SENSOR PLATFORM: %s sensorer tillagda.", len(sensors_to_add))
+    async_add_entities(entities_to_add)
+    _LOGGER.debug("SENSOR PLATFORM: %s entiteter tillagda.", len(entities_to_add))
 
 
 class SmartChargingBaseSensor(
     CoordinatorEntity[SmartEVChargingCoordinator], SensorEntity
 ):
-    """Basklass för sensorer i denna integration som använder DataUpdateCoordinator."""
+    """Basklass för sensorer i Smart EV Charging."""
 
     def __init__(
         self,
         config_entry: ConfigEntry,
         coordinator: SmartEVChargingCoordinator,
-        sensor_type_suffix: str,
+        entity_suffix: str,
     ) -> None:
-        """Initialiserar bassensorn."""
+        """Initialisera bassensorn."""
         super().__init__(coordinator)
         self._config_entry = config_entry
-        self._attr_unique_id = f"{config_entry.entry_id}_{sensor_type_suffix}"
+        self._attr_unique_id = f"{config_entry.entry_id}_{entity_suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, config_entry.entry_id)},
             name=DEFAULT_NAME,
-            manufacturer="AllehJ Integrationer",
-            model="Smart EV Charger Control",
-            entry_type="service",
+            manufacturer="Custom Component",
+            model="Smart EV Charging",
+            entry_type="service",  # DeviceEntryType.SERVICE är korrekt enum, men sträng accepteras.
+        )
+
+    @property
+    def available(self) -> bool:
+        """Returnerar true om koordinatorn är tillgänglig och har data."""
+        return (
+            super().available
+            and self.coordinator.last_update_success
+            and self.coordinator.data is not None
         )
 
 
-class SmartChargingSessionEnergySensor(SmartChargingBaseSensor):
-    _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_state_class = SensorStateClass.TOTAL
-    _attr_native_unit_of_measurement = "kWh"
-    _attr_icon = "mdi:lightning-bolt"
-
-    def __init__(
-        self, config_entry: ConfigEntry, coordinator: SmartEVChargingCoordinator
-    ) -> None:
-        super().__init__(
-            config_entry, coordinator, ENTITY_ID_SUFFIX_SESSION_ENERGY_SENSOR
-        )
-        self._attr_name = f"{DEFAULT_NAME} Session Energi"
-        self._attr_native_value: float | None = 0.0
-        self._attr_last_reset: dt_util.dt.datetime | None = dt_util.utcnow()
-        _LOGGER.info("%s initialiserad", self.name)
-        # Ta bort: self._handle_coordinator_update() # Anropas automatiskt av CoordinatorEntity
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Hanterar datauppdateringar från koordinatorn."""
-        if self.coordinator.data:
-            new_value = self.coordinator.data.get("session_energy_kwh", 0.0)
-            session_start_str = self.coordinator.data.get("session_start_time_utc")
-
-            if session_start_str:
-                new_last_reset = dt_util.parse_datetime(session_start_str)
-                if self._attr_last_reset != new_last_reset:
-                    self._attr_last_reset = new_last_reset
-            elif self._attr_last_reset is None:
-                self._attr_last_reset = dt_util.utcnow()
-
-            self._attr_native_value = new_value
-            _LOGGER.debug(
-                "%s uppdaterad: Värde=%.3f kWh, LastReset=%s",
-                self.name,
-                new_value,
-                self._attr_last_reset,
-            )
-        else:
-            self._attr_native_value = 0.0
-        if self.hass:
-            self.async_write_ha_state()
-
-
-class SmartChargingSessionCostSensor(SmartChargingBaseSensor):
-    _attr_device_class = SensorDeviceClass.MONETARY
-    _attr_state_class = SensorStateClass.TOTAL
-    _attr_native_unit_of_measurement = "SEK"
-    _attr_icon = "mdi:cash"
-
-    def __init__(
-        self, config_entry: ConfigEntry, coordinator: SmartEVChargingCoordinator
-    ) -> None:
-        super().__init__(
-            config_entry, coordinator, ENTITY_ID_SUFFIX_SESSION_COST_SENSOR
-        )
-        self._attr_name = f"{DEFAULT_NAME} Session Kostnad"
-        self._attr_native_value: float | None = 0.0
-        self._attr_last_reset: dt_util.dt.datetime | None = dt_util.utcnow()
-        _LOGGER.info("%s initialiserad", self.name)
-        # Ta bort: self._handle_coordinator_update()
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Hanterar datauppdateringar från koordinatorn."""
-        if self.coordinator.data:
-            new_value = self.coordinator.data.get("session_cost_sek", 0.0)
-            session_start_str = self.coordinator.data.get("session_start_time_utc")
-
-            if session_start_str:
-                new_last_reset = dt_util.parse_datetime(session_start_str)
-                if self._attr_last_reset != new_last_reset:
-                    self._attr_last_reset = new_last_reset
-            elif self._attr_last_reset is None:
-                self._attr_last_reset = dt_util.utcnow()
-
-            self._attr_native_value = new_value
-            _LOGGER.debug(
-                "%s uppdaterad: Värde=%.2f %s, LastReset=%s",
-                self.name,
-                new_value,
-                self._attr_native_unit_of_measurement,
-                self._attr_last_reset,
-            )
-        else:
-            self._attr_native_value = 0.0
-        if self.hass:
-            self.async_write_ha_state()
+# Klasserna SessionEnergySensor och SessionCostSensor tas bort helt.
 
 
 class ActiveControlModeSensor(SmartChargingBaseSensor):
-    _attr_icon = "mdi:robot-happy-outline"
+    """Sensor som visar det aktiva styrningsläget."""
+
+    _attr_icon = "mdi:robot-happy-outline"  # Eller mdi:auto-mode
 
     def __init__(
         self, config_entry: ConfigEntry, coordinator: SmartEVChargingCoordinator
     ) -> None:
+        """Initialisera sensorn för aktivt styrningsläge."""
         super().__init__(
             config_entry, coordinator, ENTITY_ID_SUFFIX_ACTIVE_CONTROL_MODE_SENSOR
         )
         self._attr_name = f"{DEFAULT_NAME} Aktivt Styrningsläge"
-        self._attr_native_value: str = STATE_UNKNOWN
+        self._attr_native_value: str = STATE_UNKNOWN  # Initialt värde
         _LOGGER.info("%s initialiserad", self.name)
-        # Ta bort: self._handle_coordinator_update()
+        # Uppdatera initialt värde vid start
+        self._handle_coordinator_update()
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Hanterar datauppdateringar från koordinatorn."""
         if self.coordinator.data:
-            new_value = str(self.coordinator.data.get("active_control_mode", "AV"))
-            self._attr_native_value = new_value
-            _LOGGER.debug("%s uppdaterad: Värde='%s'", self.name, new_value)
-        else:
-            self._attr_native_value = "AV"
-        if self.hass:
-            self.async_write_ha_state()
+            new_value = str(
+                self.coordinator.data.get("active_control_mode", STATE_UNKNOWN)
+            )
+            if self._attr_native_value != new_value:
+                self._attr_native_value = new_value
+                _LOGGER.debug("%s uppdaterad: Värde=%s", self.name, new_value)
+                if self.hass:  # Säkerställ att hass är tillgängligt (ska vara det efter added_to_hass)
+                    self.async_write_ha_state()
+        elif (
+            self._attr_native_value != STATE_UNKNOWN
+        ):  # Om data saknas, sätt till okänd
+            self._attr_native_value = STATE_UNKNOWN
+            _LOGGER.debug("%s uppdaterad: Data saknas, Värde=Okänd", self.name)
+            if self.hass:
+                self.async_write_ha_state()

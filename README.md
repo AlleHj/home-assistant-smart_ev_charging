@@ -7,7 +7,6 @@ Detta är en anpassad integration (custom component) för Home Assistant som mö
 * **Solenergiladdning**: Ladda med överskott från egna solpaneler.
 * **SoC-gräns**: Ställ in en maximal laddningsnivå för bilen.
 * **Dynamisk kontroll**: Anpassar laddningen baserat på flera faktorer i realtid.
-* **Sessionsdata**: Sensorer för energi och kostnad per laddningssession.
 * **Anpassningsbara entiteter**: Skapar switchar och nummerinmatningar för enkel kontroll via Home Assistant UI.
 * **Debug-läge**: Möjlighet att aktivera detaljerad loggning för felsökning.
 * **Svenska texter i UI**: Konfigurationsflödet använder svenska texter via translations-fil.
@@ -29,6 +28,21 @@ All konfiguration sker via Home Assistants användargränssnitt, både vid initi
 För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HELP.md).
 
 ## Versionshistorik
+
+### Version 0.1.34 (2025-05-29)
+* **Felrättning**: Korrigerat `TypeError` i `__init__.py` vid anrop till `SmartEVChargingCoordinator`-konstruktorn. Signaturen för koordinatorns `__init__` har justerats till att ta emot `scan_interval_seconds`, och anropet från `__init__.py` har anpassats för att matcha. `current_config` skickas inte längre till koordinatorn då den internt använder `entry.data | entry.options`.
+
+### Version 0.1.33 (2025-05-29)
+* **Felrättning**: Importerat `callback` från `homeassistant.core` i `coordinator.py` för att åtgärda "Undefined name `callback`"-fel för `@callback`-dekoratorn.
+
+### Version 0.1.32 (2025-05-29)
+* **Felrättning**: Korrigerat syntaxfel (användning av `?.`-operatorn) i `coordinator.py` vid hämtning av tillstånd för interna switchar och scheman. Ersatt med Python-korrekt logik för att hantera att entitetsobjekt kan vara `None`.
+
+### Version 0.1.31 (2025-05-29)
+* **Refaktorering**: Tagit bort sensorerna för sessionsenergi (`sensor.avancerad_elbilsladdning_session_energi`) och sessionskostnad (`sensor.avancerad_elbilsladdning_session_kostnad`) samt all tillhörande beräkningslogik från integrationen. Detta inkluderar ändringar i `const.py`, `coordinator.py` och `sensor.py`.
+
+### Version 0.1.30 (2025-05-29)
+* **Dokumentation**: Klargjort i README (under felsökning/FAQ-sektion om det fanns en) eller som svar till användare att varningar i loggen om "Okänd eller saknad enhet ('{{ state_attr(...) }}')" för effektsensorer beror på felaktig konfiguration av `unit_of_measurement` i användarens template-sensorer i `configuration.yaml`. `unit_of_measurement` för template-sensorer måste vara en fast sträng, inte en template. Inga ändringar i komponentens Python-kod krävdes för detta.
 
 ### Version 0.1.29 (2025-05-29)
 * **Felrättning (Options Flow)**: Bekräftat att justeringarna i `config_flow.py` (v0.1.28), som ändrade schemadefinitionen för valfria selektorer i Options Flow att använda `description={"suggested_value": ...}` istället för `default=...` (i likhet med en tidigare fungerande version), har löst problemet med att rensade entitetsfält inte sparades korrekt utan återgick till sina gamla värden. Både validering av tomma valfria fält och sparandet av rensade/ändrade fält i Options Flow fungerar nu som förväntat.
