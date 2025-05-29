@@ -30,6 +30,10 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.25 (2025-05-29)
+* **Rättelse**: Åtgärdat en deprecieringsvarning i `config_flow.py` genom att ta bort den överflödiga tilldelningen `self.config_entry = config_entry` i `OptionsFlowHandler.__init__`. Basklassen tillhandahåller redan denna attribut.
+* **Felsökning (Options Flow)**: Problemet att rensade entitetsfält i Options Flow inte sparas korrekt (gamla värdet kvarstår) är oförändrat. Diagnos baserad på loggning av `user_input` (den data som tas emot från frontend) bekräftar att frontend skickar det gamla värdet istället för ett tomt värde (`""`) när ett fält rensas. Detta problem ligger utanför denna integrations backend-kod och kan inte åtgärdas härifrån. Loggrad för `user_input` i Options Flow behålls tills vidare för att underlätta för användaren att se detta.
+
 ### Version 0.1.24 (2025-05-29)
 * **Felsökning (Options Flow)**: Återinfört en debug-loggrad i `config_flow.py` för att explicit logga innehållet i `user_input` när Options Flow hanteras. Detta är ett diagnostiskt steg för att definitivt fastställa vilken data som tas emot från frontend när ett entitetsfält rensas, vilket är avgörande för att förstå varför rensade fält eventuellt inte sparas korrekt.
 
