@@ -30,6 +30,22 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.28 (2025-05-29)
+* **Förbättring (Config Flow)**: Justerat `_build_common_schema` i `config_flow.py` för att hantera schemadefinition för Options Flow närmare den äldre, fungerande versionen som användaren tillhandahöll. Använder nu `description={"suggested_value": ...}` istället för `default=...` för `vol.Optional` för valfria selektorer i Options Flow, i ett försök att påverka hur frontend skickar data för rensade fält. `vol.Maybe()` behålls för dessa fält för att tillåta `None`.
+* **Rättelse**: Åtgärdat diverse linting-varningar i `config_flow.py` (docstring, dict type hint, implementerat `is_matching`, tagit bort deprecierad `self.config_entry`-tilldelning).
+* **Felsökning (Options Flow)**: Problemet att rensade entitetsfält i Options Flow inte sparas korrekt (gamla värdet kvarstår) undersöks fortfarande. Loggning av `user_input` är fortsatt aktivt för att fånga exakt data från frontend.
+
+### Version 0.1.27 (2025-05-29)
+* **Felsökning (Options Flow)**: Problemet med att rensade entitetsfält i Options Flow inte sparas korrekt (gamla värdet kvarstår) undersöks vidare. Användaren har indikerat att detta fungerade i en äldre version av integrationen. Detta tyder på en möjlig regression i `config_flow.py`. Fokus ligger nu på att jämföra nuvarande `config_flow.py` med den tidigare fungerande versionen för att identifiera skillnader i schema-definition eller hantering av `user_input` för Options Flow. Loggning av `user_input` från frontend är fortfarande kritisk för att fastställa exakt vilken data backend-koden tar emot.
+
+### Version 0.1.26 (2025-05-29)
+* **Rättelse**: Åtgärdat diverse linting-varningar i `config_flow.py`:
+    * Implementerat en skellettversion av `is_matching` i `SmartEVChargingConfigFlow` för att uppfylla krav på abstrakt metod.
+    * Lagt till docstring för `async_step_user` i `SmartEVChargingConfigFlow`.
+    * Ändrat typ-hint `Dict` till `dict` för `errors`-variabeln.
+    * (Bekräftat att deprecierad tilldelning av `self.config_entry` i `OptionsFlowHandler.__init__` är borttagen sedan v0.1.25).
+* **Felsökning (Options Flow)**: Kärnproblemet med att rensade entitetsfält i Options Flow inte sparas korrekt (gamla värdet kvarstår) är **oförändrat**. Diagnos baserad på loggning av `user_input` (den data som tas emot från frontend) bekräftar att frontend skickar det gamla värdet istället för ett tomt värde (`""`) när ett fält rensas. Detta problem ligger utanför denna integrations backend-kod.
+
 ### Version 0.1.25 (2025-05-29)
 * **Rättelse**: Åtgärdat en deprecieringsvarning i `config_flow.py` genom att ta bort den överflödiga tilldelningen `self.config_entry = config_entry` i `OptionsFlowHandler.__init__`. Basklassen tillhandahåller redan denna attribut.
 * **Felsökning (Options Flow)**: Problemet att rensade entitetsfält i Options Flow inte sparas korrekt (gamla värdet kvarstår) är oförändrat. Diagnos baserad på loggning av `user_input` (den data som tas emot från frontend) bekräftar att frontend skickar det gamla värdet istället för ett tomt värde (`""`) när ett fält rensas. Detta problem ligger utanför denna integrations backend-kod och kan inte åtgärdas härifrån. Loggrad för `user_input` i Options Flow behålls tills vidare för att underlätta för användaren att se detta.
