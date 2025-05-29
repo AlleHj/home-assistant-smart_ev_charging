@@ -30,6 +30,9 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.13 (2025-05-29)
+* **Felsökning**: Tog bort extra debug-loggning för `user_input` i `config_flow.py` (Options Flow) då diagnos indikerar att felet med att spara rensade entitetsfält troligen ligger i hur frontend skickar data, inte i hur backend tar emot eller bearbetar den. Komponentens Python-kod hanterar inkommande data korrekt.
+
 ### Version 0.1.12 (2025-05-29)
 * **Felsökning**: Lade till utökad debug-loggning i `config_flow.py` (Options Flow) för att logga det `user_input` som tas emot från formuläret. Detta för att bättre kunna analysera varför rensade entitetsfält eventuellt inte sparas korrekt. Ingen ändring i spara-logiken i detta steg.
 

@@ -1,4 +1,4 @@
-# File version: 2025-05-29 0.1.12
+# File version: 2025-05-29 0.1.13
 """Config flow for Smart EV Charging integration."""
 import logging
 from typing import Any, Dict, OrderedDict
@@ -42,7 +42,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL_SECONDS,
 )
 
-_LOGGER = logging.getLogger(__name__) # Använd logger som matchar den i manifest.json för config_flow
+_LOGGER = logging.getLogger(__name__)
 
 ALL_CONF_KEYS = [
     CONF_CHARGER_DEVICE, CONF_STATUS_SENSOR, CONF_CHARGER_ENABLED_SWITCH_ID,
@@ -80,17 +80,15 @@ def _build_common_schema(
 
         existing_val = current_settings.get(conf_key, default_val)
         if conf_key in OPTIONAL_ENTITY_CONF_KEYS and existing_val is None:
-            return "" # EntitySelector hanterar "" bättre än None som default i UI
+            return ""
         return existing_val
 
     defined_fields = OrderedDict()
-    # Obligatoriska fält (blir vol.Optional med default i options flow)
     defined_fields[vol.Required(CONF_CHARGER_DEVICE, default=_get_current_value(CONF_CHARGER_DEVICE, ""))] = DeviceSelector(DeviceSelectorConfig(integration="easee"))
     defined_fields[vol.Required(CONF_STATUS_SENSOR, default=_get_current_value(CONF_STATUS_SENSOR, ""))] = EntitySelector(EntitySelectorConfig(domain="sensor", multiple=False))
     defined_fields[vol.Required(CONF_CHARGER_ENABLED_SWITCH_ID, default=_get_current_value(CONF_CHARGER_ENABLED_SWITCH_ID, ""))] = EntitySelector(EntitySelectorConfig(domain="switch", multiple=False))
     defined_fields[vol.Required(CONF_PRICE_SENSOR, default=_get_current_value(CONF_PRICE_SENSOR, ""))] = EntitySelector(EntitySelectorConfig(domain="sensor", multiple=False))
 
-    # Valfria fält
     defined_fields[vol.Optional(CONF_SURCHARGE_HELPER, default=_get_current_value(CONF_SURCHARGE_HELPER, ""))] = EntitySelector(EntitySelectorConfig(domain=["sensor", "input_number"], multiple=False))
     defined_fields[vol.Optional(CONF_TIME_SCHEDULE_ENTITY, default=_get_current_value(CONF_TIME_SCHEDULE_ENTITY, ""))] = EntitySelector(EntitySelectorConfig(domain="schedule", multiple=False))
     defined_fields[vol.Optional(CONF_HOUSE_POWER_SENSOR, default=_get_current_value(CONF_HOUSE_POWER_SENSOR, ""))] = EntitySelector(EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.POWER, multiple=False))
@@ -106,33 +104,26 @@ def _build_common_schema(
 
     final_schema = OrderedDict()
     for key_marker, selector_value in defined_fields.items():
-        conf_key_str = str(key_marker.schema) # Detta är vår CONF_ konstant
-        current_default_from_marker = key_marker.default # Detta är _get_current_value() resultatet
+        conf_key_str = str(key_marker.schema)
+        current_default_from_marker = key_marker.default
 
         if is_options_flow:
-            # I options flow är alla fält tekniskt sett valfria, de överlagrar config.data
-            # Default-värdet är det nuvarande effektiva värdet (från data eller tidigare options)
             final_schema[vol.Optional(conf_key_str, default=current_default_from_marker)] = selector_value
-        else: # Initial setup flow
+        else:
             val_for_default_in_setup = current_default_from_marker
-            # För nya, valfria entitetsfält, sätt default till "" för att visa tomt i UI vid första setup
             if user_input_for_repopulating is None and conf_key_str in OPTIONAL_ENTITY_CONF_KEYS:
                 val_for_default_in_setup = ""
-            # För nya, valfria nummerfält utan specifik konstant default, sätt till UNDEFINED om du inte vill förifylla
             elif user_input_for_repopulating is None and conf_key_str == CONF_TARGET_SOC_LIMIT:
-                 val_for_default_in_setup = vol.UNDEFINED # Inget defaultvärde för SoC-gräns
+                 val_for_default_in_setup = vol.UNDEFINED
             elif user_input_for_repopulating is None and conf_key_str == CONF_SCAN_INTERVAL:
                 val_for_default_in_setup = DEFAULT_SCAN_INTERVAL_SECONDS
             elif user_input_for_repopulating is None and conf_key_str == CONF_DEBUG_LOGGING:
                 val_for_default_in_setup = False
 
             if conf_key_str in REQUIRED_CONF_SETUP_KEYS:
-                # För obligatoriska fält vid initial setup:
-                # Om user_input_for_repopulating finns (dvs. formuläret visas igen pga fel), använd det värdet.
-                # Annars (helt nytt formulär), tvinga fram val genom vol.UNDEFINED.
                 current_default_for_required = _get_current_value(conf_key_str, "") if user_input_for_repopulating else vol.UNDEFINED
                 final_schema[vol.Required(conf_key_str, default=current_default_for_required)] = selector_value
-            else: # Valfria fält vid initial setup
+            else:
                 final_schema[vol.Optional(conf_key_str, default=val_for_default_in_setup)] = selector_value
     return vol.Schema(final_schema)
 
@@ -152,8 +143,8 @@ class SmartEVChargingOptionsFlowHandler(OptionsFlow):
         current_settings = {**self.config_entry.data, **self.config_entry.options}
 
         if user_input is not None:
-            # *** NY LOGGRAD FÖR FELSÖKNING ***
-            _LOGGER.debug("OptionsFlow: Mottaget user_input: %s", user_input)
+            # Föregående version (0.1.12) hade en debug-log här för user_input.
+            # Den tas bort nu då diagnosen pekar på att user_input självt är problemet.
 
             options_to_save = {}
             validation_ok = True
