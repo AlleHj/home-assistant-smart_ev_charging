@@ -30,8 +30,8 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
-### Version 0.1.20 (2025-05-29)
-* **Felrättning**: Korrigerat ett `AttributeError: 'NoneType' object has no attribute 'lower'` i `coordinator.py`. Felet uppstod när `charger_max_current_limit_sensor_id` var `None` (dvs. valfri sensor ej konfigurerad) och `hass.states.get()` anropades med `None`. Lade till en kontroll för att säkerställa att sensor-ID:t inte är `None` innan `hass.states.get()` anropas. Förbättrad fallback-logik för `charger_hw_max_current_a`.
+### Version 0.1.21 (2025-05-29)
+* **Felsökning (Options Flow)**: Problemet att rensade entitetsfält i Options Flow inte sparas korrekt (gamla värdet kvarstår) är oförändrat. Diagnos pekar starkt på att felet beror på att datan som tas emot från Home Assistants frontend (`user_input`) felaktigt innehåller det gamla värdet istället för ett tomt värde (`""`) som indikerar att fältet rensats. Ytterligare analys kräver specifik loggning av `user_input` vid ett misslyckat sparförsök i Options Flow. Ingen ändring i Python-kod för config flow i detta steg.
 
 ### Version 0.1.19 (2025-05-29)
 * **Felrättning (Options Flow & Initial Setup)**: Ytterligare justeringar i `config_flow.py` (`_build_common_schema`). Selektorer för fält som kan vara `None` (valfria entitetsfält och SoC-gräns) kapslas nu konsekvent med `vol.Maybe()` och använder `default=None` (om värdet faktiskt är `None`) i schemadefinitionen för både initial konfiguration och alternativflödet. Detta åtgärdar valideringsfel som "expected float" och "Entity None is neither a valid entity ID..." när dessa fält lämnas tomma. Detta kan även påverka hur frontend skickar data för rensade fält i Options Flow, vilket potentiellt kan avhjälpa det tidigare problemet med att gamla värden sparades.
