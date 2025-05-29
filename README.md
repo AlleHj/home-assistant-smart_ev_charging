@@ -30,6 +30,9 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.18 (2025-05-29)
+* **UI Förbättring**: Lade till en asterisk (*) efter namnen på obligatoriska fält i den initiala konfigurationsdialogen (via `translations/sv.json`) för att förtydliga vilka fält som måste fyllas i. Ändrade även den övergripande beskrivningen för detta steg för att nämna asterisken.
+
 ### Version 0.1.17 (2025-05-29)
 * **Felrättning (Options Flow & Initial Setup)**: Justerat `config_flow.py` (`_build_common_schema`) så att valfria entitetsfält nu använder `vol.Maybe(EntitySelector(...))` och korrekt `default=None` (om fältet är tomt) i schemadefinitionen för både initial konfiguration och alternativflödet. Detta bör förhindra valideringsfelet "Entity None is neither a valid entity ID nor a valid UUID" när dessa fält lämnas tomma eller rensas. Detta kan potentiellt även förbättra situationen där rensade fält i Options Flow inte sparades korrekt, om grundorsaken var relaterad till schema-validering.
 
