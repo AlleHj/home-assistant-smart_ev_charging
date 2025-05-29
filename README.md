@@ -30,8 +30,11 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
-### Version 0.1.22 (2025-05-29)
-* **Felsökning (Options Flow)**: Fortsatt undersökning av problemet där rensade entitetsfält i Options Flow inte sparas som tomma utan behåller sitt gamla värde. Loggning av `options_to_save` (den data som *försöks* sparas) visar att det gamla värdet finns med där. Detta indikerar starkt att `user_input` (datan som tas emot från frontend) innehåller det gamla värdet istället för ett tomt värde (`""`) som förväntas när ett fält rensas i UI. Problemet ligger därmed med hög sannolikhet i hur frontend skickar data under dessa omständigheter, vilket är utanför denna integrations omedelbara kontroll. Backend-koden hanterar den data den får korrekt.
+### Version 0.1.24 (2025-05-29)
+* **Felsökning (Options Flow)**: Återinfört en debug-loggrad i `config_flow.py` för att explicit logga innehållet i `user_input` när Options Flow hanteras. Detta är ett diagnostiskt steg för att definitivt fastställa vilken data som tas emot från frontend när ett entitetsfält rensas, vilket är avgörande för att förstå varför rensade fält eventuellt inte sparas korrekt.
+
+### Version 0.1.23 (2025-05-29)
+* **Felsökning (Options Flow)**: Problemet att rensade entitetsfält i Options Flow inte sparas som tomma utan behåller sitt gamla värde kvarstår. Loggning av `options_to_save` (den data som Python-koden *försöker* spara) fortsätter att visa det gamla värdet. Detta indikerar med mycket hög sannolikhet att `user_input` (den rådata som Python-koden tar emot från Home Assistants frontend) felaktigt innehåller det gamla värdet, istället för ett tomt värde (`""`) som förväntas när ett fält rensas i UI. Problemet ligger därmed troligen i hur frontend skickar data under dessa omständigheter, vilket är utanför denna integrations omedelbara kontroll. Backend-koden hanterar den data den får korrekt. För definitiv diagnos krävs loggning av rå `user_input`.
 
 ### Version 0.1.19 (2025-05-29)
 * **Felrättning (Options Flow & Initial Setup)**: Ytterligare justeringar i `config_flow.py` (`_build_common_schema`). Selektorer för fält som kan vara `None` (valfria entitetsfält och SoC-gräns) kapslas nu konsekvent med `vol.Maybe()` och använder `default=None` (om värdet faktiskt är `None`) i schemadefinitionen för både initial konfiguration och alternativflödet. Detta åtgärdar valideringsfel som "expected float" och "Entity None is neither a valid entity ID..." när dessa fält lämnas tomma. Detta kan även påverka hur frontend skickar data för rensade fält i Options Flow, vilket potentiellt kan avhjälpa det tidigare problemet med att gamla värden sparades.
