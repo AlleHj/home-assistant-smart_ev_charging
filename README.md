@@ -6,7 +6,7 @@ Detta är en anpassad integration (custom component) för Home Assistant som mö
 * **Pris/Tid-styrd laddning**: Ladda när elpriset är lågt och inom definierade tidsscheman.
 * **Solenergiladdning**: Ladda med överskott från egna solpaneler.
 * **SoC-gräns**: Ställ in en maximal laddningsnivå för bilen.
-* **Dynamisk kontroll**: Anpassar laddningen baserat på flera faktorer i realtid.
+* **Dynamisk kontroll**: Anpassar laddningen baserat på flera faktorer i realtid. Inkluderar nu optimering för att minska onödiga API-anrop för att sätta laddström.
 * **Anpassningsbara entiteter**: Skapar switchar och nummerinmatningar för enkel kontroll via Home Assistant UI.
 * **Debug-läge**: Möjlighet att aktivera detaljerad loggning för felsökning.
 * **Svenska texter i UI**: Konfigurationsflödet använder svenska texter via translations-fil.
@@ -28,6 +28,11 @@ All konfiguration sker via Home Assistants användargränssnitt, både vid initi
 För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HELP.md).
 
 ## Versionshistorik
+
+### Version 0.1.35 (2025-05-30)
+* **Ny funktion**: Optimerad styrning för att undvika onödiga API-anrop. `set_dynamic_charger_circuit_current` anropas nu endast om mål-strömmen skiljer sig från den nuvarande aktiva gränsen (om en sensor för detta är konfigurerad).
+* **Konfiguration**: Lade till ett nytt valfritt fält, "Sensor för Laddboxens Dynamiska Strömgräns (A)", för att möjliggöra den nya optimeringen.
+* **Kodstandard**: Alla filversioner uppdaterade.
 
 ### Version 0.1.34 (2025-05-29)
 * **Felrättning**: Korrigerat `TypeError` i `__init__.py` vid anrop till `SmartEVChargingCoordinator`-konstruktorn. Signaturen för koordinatorns `__init__` har justerats till att ta emot `scan_interval_seconds`, och anropet från `__init__.py` har anpassats för att matcha. `current_config` skickas inte längre till koordinatorn då den internt använder `entry.data | entry.options`.

@@ -45,7 +45,7 @@ Efter installationen kan du ändra inställningarna genom att gå till integrati
 
 ### Förklaring av Konfigurationsparametrar
 
-Alla entiteter du väljer här måste redan existera i din Home Assistant-miljö. Du kan skapa dem med t.ex. "Hjälpare" (för scheman, input\_number) eller via `template:`-sensorer i din `configuration.yaml`.
+Alla entiteter du väljer här måste redan existera i din Home Assistant-miljö. Du kan skapa dem med t.ex. "Hjälpare" (för scheman, input_number) eller via `template:`-sensorer i din `configuration.yaml`.
 
 #### Obligatoriska Fält:
 * **Easee Laddarenhet (`charger_device_id`)**:
@@ -79,6 +79,9 @@ Alla entiteter du väljer här måste redan existera i din Home Assistant-miljö
     * **Krav**: En `schedule`-entitet.
 * **Sensor för Laddboxens Max Strömgräns (`charger_max_current_limit_sensor_id`)**:
     * **Beskrivning**: Valfri. Välj en sensor som visar den faktiska dynamiska eller statiska strömbegränsningen (i Ampere) som är satt på laddboxen (t.ex. via Easee-appen eller annan automation). Används för att veta den faktiska maximala strömmen som kan användas, speciellt för Pris/Tid-laddning. Om utelämnad, antar integrationen en standardgräns (f.n. 16A).
+    * **Krav**: En `sensor`-entitet.
+* **Sensor för Laddboxens Dynamiska Strömgräns (`charger_dynamic_current_sensor_id`)**:
+    * **Beskrivning**: Valfri. För att aktivera en optimering som minskar onödiga kommandon, välj här en sensor som visar den **nuvarande aktiva dynamiska strömgränsen** som är satt på laddaren. Om detta fält är konfigurerat, kommer integrationen bara att skicka ett nytt `set_dynamic...`-kommando om mål-strömmen skiljer sig från den nuvarande. Detta kan vara användbart om t.ex. Easee-integrationen tillhandahåller en sådan sensor.
     * **Krav**: En `sensor`-entitet.
 * **Effektsensor för Elbilens Laddning (`ev_power_sensor_id`)**:
     * **Beskrivning**: Valfri. Välj en sensor som mäter den faktiska effekt som bilen för närvarande laddas med (i Watt eller kW). Används för att beräkna ackumulerad energi och kostnad för den aktuella laddningssessionen. Om denna sensor saknas kommer sessionsdata för energi och kostnad inte att uppdateras korrekt.
