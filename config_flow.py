@@ -1,6 +1,7 @@
 # File version: 2025-05-30 0.1.35
 """Config flow for Smart EV Charging integration."""
 
+import voluptuous as vol
 import logging
 from typing import Any
 from collections import OrderedDict
@@ -90,6 +91,13 @@ REQUIRED_CONF_SETUP_KEYS = [
 HELP_URL_GLOBAL = (
     "https://github.com/AlleHj/home-assistant-smart_ev_charging/blob/master/HELP.md"
 )
+
+
+def coerce_empty_string_to_none(value):
+    """Convert an empty string to None, pass other values through."""
+    if value == "":
+        return None
+    return value
 
 
 def _build_common_schema(

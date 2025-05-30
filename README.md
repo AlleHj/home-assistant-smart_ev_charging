@@ -29,6 +29,13 @@ För en detaljerad genomgång av alla konfigurationsalternativ, se [HELP.md](HEL
 
 ## Versionshistorik
 
+### Version 0.1.38 (2025-05-30)
+* **Felrättning**: Förbättrad hantering i `coordinator.py` för hur standardvärden tillämpas för nummer-entiteter (t.ex. solenergi-buffert). Detta säkerställer att ett konfigurerat värde på `0.0` respekteras och inte felaktigt ersätts av ett inbyggt standardvärde.
+### Version 0.1.37 (2025-05-30)
+* **Felrättning**: Korrigerat beräkningen för ström vid solenergiladdning i `coordinator.py` för att korrekt hantera trefasladdare. Strömmen per fas beräknas nu som `Total Tillgänglig Effekt / (3 * Faspänning)`. Detta säkerställer mer exakt styrning baserat på solöverskott för trefassystem.
+### Version 0.1.36 (2025-05-30)
+* **Felrättning**: Korrigerat prioriteringslogiken i `coordinator.py` så att Pris/Tid-styrd laddning nu korrekt har högre prioritet än Solenergiladdning när båda är aktiverade och deras respektive villkor (t.ex. aktivt schema för Pris/Tid) är uppfyllda. Detta åtgärdar ett problem där solenergiladdning kunde fortsätta trots att Pris/Tid-schemat blev aktivt.
+* **Förbättring**: Justerat interna anrop i `coordinator.py` för att hämta numeriska värden från sensorer, vilket minskar onödiga varningsloggar.
 ### Version 0.1.35 (2025-05-30)
 * **Ny funktion**: Optimerad styrning för att undvika onödiga API-anrop. `set_dynamic_charger_circuit_current` anropas nu endast om mål-strömmen skiljer sig från den nuvarande aktiva gränsen (om en sensor för detta är konfigurerad).
 * **Konfiguration**: Lade till ett nytt valfritt fält, "Sensor för Laddboxens Dynamiska Strömgräns (A)", för att möjliggöra den nya optimeringen.
