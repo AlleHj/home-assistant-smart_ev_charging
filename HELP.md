@@ -1,134 +1,170 @@
-# Hjälp för Avancerad Elbilsladdning Integration
+# Avancerad Elbilsladdning - Användarmanual
 
-Välkommen till hjälpsektionen för custom component "Avancerad Elbilsladdning" för Home Assistant!
-Denna integration syftar till att ge dig en flexibel och intelligent styrning av din elbilsladdning.
+Detta dokument beskriver hur du installerar, konfigurerar och använder den anpassade integrationen "Avancerad Elbilsladdning" för Home Assistant. Målet med integrationen är att ge en flexibel och intelligent styrning av din elbilsladdning.
 
 ## Innehållsförteckning
-1.  [Syfte med Integrationen](#1-syfte-med-integrationen)
-2.  [Övergripande Funktionalitet](#2-övergripande-funktionalitet)
-    * [Prioritetsordning](#prioritetsordning)
-3.  [Systemkrav och Externa Beroenden](#3-systemkrav-och-externa-beroenden)
-4.  [Konfiguration av Integrationen](#4-konfiguration-av-integrationen)
-    * [Initial Konfiguration](#initial-konfiguration)
-    * [Ändra Alternativ](#ändra-alternativ)
-    * [Förklaring av Konfigurationsparametrar](#förklaring-av-konfigurationsparametrar)
-5.  [Entiteter Skapade av Integrationen](#5-entiteter-skapade-av-integrationen)
-6.  [Kärnlogik och Styrningsstrategier](#6-kärnlogik-och-styrningsstrategier)
-7.  [Felsökning](#7-felsökning)
+- [Introduktion](#introduktion)
+- [Funktioner](#funktioner)
+- [Systemkrav](#systemkrav)
+- [Installation](#installation)
+- [Konfiguration](#konfiguration)
+  - [Obligatoriska fält](#obligatoriska-fält)
+  - [Valfria fält och deras betydelse](#valfria-fält-och-deras-betydelse)
+  - [Exempel på sensorer](#exempel-på-sensorer)
+- [Entiteter som skapas av integrationen](#entiteter-som-skapas-av-integrationen)
+- [Hur styrningslogiken fungerar](#hur-styrningslogiken-fungerar)
+  - [Pris/Tid-styrd laddning](#pristid-styrd-laddning)
+  - [Solenergiladdning](#solenergiladdning)
+  - [SoC-gräns (State of Charge)](#soc-gräns-state-of-charge)
+  - [Prioritering mellan lägen](#prioritering-mellan-lägen)
+- [Felsökning](#felsökning)
+- [Testfall](#testfall)
+- [Bidra](#bidra)
+- [Licens](#licens)
 
-## 1. Syfte med Integrationen
-Målet är att automatiskt styra laddningen av din elbil via en Easee-laddbox (eller potentiellt andra kompatibla laddboxar) baserat på dynamiska kriterier som elpris, tidsscheman, solenergiöverskott och bilens laddningsnivå (SoC). Detta för att optimera laddningskostnader och maximera användningen av egenproducerad solenergi.
+## Introduktion
+Avancerad Elbilsladdning är en integration designad för att optimera laddningen av din elbil genom att ta hänsyn till faktorer som elpris, tillgänglig solenergi och bilens aktuella laddningsnivå. Den är primärt utvecklad med Easee-laddboxar i åtanke men kan vara anpassningsbar.
 
-## 2. Övergripande Funktionalitet
-Integrationen erbjuder flera smarta laddningslägen och en övergripande laddningsgräns (SoC).
+## Funktioner
+Se [README.md](README.md) för en komplett lista över funktioner.
 
-### Prioritetsordning
-Styrningen sker enligt följande prioritet:
-1.  **Laddningsgräns (SoC - State of Charge)**: (Högst Prioritet) Om bilens SoC når den inställda gränsen, pausas all smart laddning.
-2.  **Pris/Tid-styrd Smartladdning**: (Andra Prioritet, om SoC tillåter) Laddar när definierade tidsscheman är aktiva och aktuellt spotpris är under inställt maxvärde.
-3.  **Solenergiladdning**: (Tredje Prioritet, om SoC och Pris/Tid tillåter) Använder solenergiöverskott för laddning när dess schema är aktivt och tillräckligt överskott finns.
-
-Integrationen skapar egna entiteter (switchar, nummerinmatningar, sensorer) för att hantera dessa funktioner och ge översikt.
-
-## 3. Systemkrav och Externa Beroenden
+## Systemkrav
+För att använda denna integration behöver du:
 * En fungerande Home Assistant-installation.
-* **Easee EV Charger-integrationen**: Korrekt installerad och konfigurerad för din Easee-laddbox.
-* Diverse sensorer och hjälpare som du behöver skapa i Home Assistant och sedan länka till under konfigurationen av denna integration.
+* Easee EV Charger-integrationen korrekt installerad och konfigurerad (om du använder en Easee-laddbox).
+* Externa sensorer och hjälpare i Home Assistant som tillhandahåller nödvändig data (se [Konfiguration](#konfiguration)).
 
-## 4. Konfiguration av Integrationen
+## Installation
+Installationsinstruktioner finns i [README.md](README.md).
 
-### Initial Konfiguration
-När du lägger till "Avancerad Elbilsladdning" från integrationssidan i Home Assistant, kommer du att guidas genom en konfigurationsdialog.
+## Konfiguration
+All konfiguration sker via Home Assistants användargränssnitt när du lägger till integrationen, och kan senare justeras via "Alternativ" på integrationskortet.
 
-### Ändra Alternativ
-Efter installationen kan du ändra inställningarna genom att gå till integrationens sida och klicka på "Alternativ".
+### Obligatoriska fält
+Dessa måste fyllas i för att integrationen ska kunna starta:
+* **Easee Laddarenhet (`charger_device_id`):** Välj den Easee-laddarenhet du vill styra.
+* **Statussensor för Laddaren (`status_sensor_id`):** Sensorn som rapporterar laddarens aktuella status (t.ex. `sensor.min_laddbox_status`).
+* **Huvudströmbrytare för Laddboxen (`charger_enabled_switch_id`):** Switchen som helt aktiverar/deaktiverar strömmen till laddboxen (t.ex. `switch.min_laddbox_aktiverad`).
+* **Elprissensor (Spotpris) (`price_sensor_id`):** Sensorn som rapporterar aktuellt el-spotpris (t.ex. från Nordpool).
 
-### Förklaring av Konfigurationsparametrar
+### Valfria fält och deras betydelse
+En komplett lista och beskrivning av alla konfigurationsparametrar, både obligatoriska och valfria (som t.ex. SoC-sensor, solproduktion, tidsscheman), finns i UI:t när du konfigurerar integrationen och detaljeras ytterligare i detta dokument under relevanta funktionsbeskrivningar.
 
-Alla entiteter du väljer här måste redan existera i din Home Assistant-miljö. Du kan skapa dem med t.ex. "Hjälpare" (för scheman, input_number) eller via `template:`-sensorer i din `configuration.yaml`.
+*(Här skulle en mer detaljerad genomgång av varje konfigurationsalternativ kunna läggas in, liknande det som finns i `Utveckling av Custom Component Avancerad Elbilsladdning för Home Assistant.docx`)*
 
-#### Obligatoriska Fält:
-* **Easee Laddarenhet (`charger_device_id`)**:
-    * **Beskrivning**: Välj din Easee-laddboxenhet från listan. Detta är den primära enheten som integrationen kommer att styra.
-    * **Krav**: Enhet skapad av Easee-integrationen.
-* **Statussensor för Laddaren (`status_sensor_id`)**:
-    * **Beskrivning**: Välj den sensor som visar aktuell status för din Easee-laddare (t.ex. `sensor.min_laddbox_status`). Integrationen använder denna för att veta om bilen är ansluten, laddar, pausad etc.
-    * **Krav**: En `sensor`-entitet. Exempel: `sensor.easee_uppfart_status`.
-* **Huvudströmbrytare för Laddboxen (`charger_enabled_switch_id`)**:
-    * **Beskrivning**: Välj den `switch`-entitet som styr huvudströmbrytaren för din Easee-laddbox (t.ex. `switch.min_laddbox_aktiverad`). Integrationen kan automatiskt slå på denna om ett smart laddningsläge är aktivt men brytaren är av.
-    * **Krav**: En `switch`-entitet. Exempel: `switch.easee_uppfart_power`.
-* **Elprissensor (Spotpris) (`price_sensor_id`)**:
-    * **Beskrivning**: Välj den sensor som visar aktuellt el-spotpris. Integrationen försöker tolka enheter som öre/kWh, SEK/kWh, EUR/kWh eller MWh-varianter. Priset används för Pris/Tid-styrd laddning.
-    * **Krav**: En `sensor`-entitet. Exempel: `sensor.nordpool_kwh_se3_sek_3_10_025`.
+## Entiteter som skapas av integrationen
+Integrationen skapar automatiskt följande entiteter för att du ska kunna interagera med och övervaka de smarta laddningsfunktionerna:
+* **Switch (`..._smart_charging_enabled`):** "Avancerad Elbilsladdning Smart Laddning Aktiv" - Aktiverar/avaktiverar den pris/tid-styrda smartladdningen.
+* **Switch (`..._solar_surplus_charging_enabled`):** "Avancerad Elbilsladdning Aktivera Solenergiladdning" - Aktiverar/avaktiverar laddning med solenergiöverskott.
+* **Nummer (`..._max_charging_price`):** "Avancerad Elbilsladdning Max Elpris" - Ställer in det maximala spotpriset (kr/kWh) för Pris/Tid-laddning.
+* **Nummer (`..._solar_charging_buffer`):** "Avancerad Elbilsladdning Solenergi Buffer" - Ställer in en effektbuffert (Watt) som reserveras för husets behov innan solenergi används för laddning.
+* **Nummer (`..._min_solar_charging_current`):** "Avancerad Elbilsladdning Minsta Laddström Solenergi" - Ställer in den minsta strömstyrka (Ampere) som krävs från solöverskott för att starta/fortsätta solenergiladdning.
+* **Sensor (`..._active_control_mode`):** "Avancerad Elbilsladdning Aktivt Styrningsläge" - Visar det faktiska styrningsläget som för närvarande är aktivt och kontrollerar laddningen: "PRIS_TID", "SOLENERGI" eller "AV" (manuell).
 
-#### Valfria Fält (men rekommenderade för full funktionalitet):
-* **Påslagshjälpare (Avgifter/Moms) (`surcharge_helper_id`)**:
-    * **Beskrivning**: Valfri. Välj en `sensor` eller `input_number` som representerar totala påslag utöver spotpriset (t.ex. nätavgift, moms, elcertifikat) i kr/kWh eller öre/kWh. Används *endast* för att beräkna den totala kostnaden för en laddningssession (visas i `sensor.avancerad_elbilsladdning_session_kostnad`). Påverkar inte själva laddningsbesluten.
-    * **Krav**: En `sensor` eller `input_number`. Om utelämnad, antas påslaget vara 0.
-* **Tidsschema för Pris/Tid-laddning (`time_schedule_entity_id`)**:
-    * **Beskrivning**: Valfri. Välj en `schedule`-hjälpare. När detta schema är aktivt (PÅ), är Pris/Tid-styrd laddning tillåten (förutsatt att prisvillkoret också är uppfyllt). Om inget schema anges här, anses Pris/Tid-laddning alltid vara tidstillåten (styrs då enbart av pris och huvudswitchen för Pris/Tid).
-    * **Krav**: En `schedule`-entitet.
-* **Effektsensor för Huset (`house_power_sensor_id`)**:
-    * **Beskrivning**: Valfri, men **nödvändig för solenergiladdning**. Välj en sensor som mäter husets totala momentana effektförbrukning i Watt (W) eller kilowatt (kW). Används för att beräkna solenergiöverskott.
-    * **Krav**: En `sensor`-entitet med `device_class: power`.
-* **Effektsensor för Solproduktion (`solar_production_sensor_id`)**:
-    * **Beskrivning**: Valfri, men **nödvändig för solenergiladdning**. Välj en sensor som mäter din solcellsanläggnings totala momentana effektproduktion i Watt (W) eller kilowatt (kW).
-    * **Krav**: En `sensor`-entitet med `device_class: power`.
-* **Tidsschema för Solenergiladdning (`solar_schedule_entity_id`)**:
-    * **Beskrivning**: Valfri. Välj en `schedule`-hjälpare. När detta schema är aktivt (PÅ), är solenergiladdning tillåten (förutsatt att det finns tillräckligt med solöverskott). Om inget schema anges, anses solenergiladdning alltid vara tidstillåten (styrs då enbart av överskott och huvudswitchen för solenergiladdning).
-    * **Krav**: En `schedule`-entitet.
-* **Sensor för Laddboxens Max Strömgräns (`charger_max_current_limit_sensor_id`)**:
-    * **Beskrivning**: Valfri. Välj en sensor som visar den faktiska dynamiska eller statiska strömbegränsningen (i Ampere) som är satt på laddboxen (t.ex. via Easee-appen eller annan automation). Används för att veta den faktiska maximala strömmen som kan användas, speciellt för Pris/Tid-laddning. Om utelämnad, antar integrationen en standardgräns (f.n. 16A).
-    * **Krav**: En `sensor`-entitet.
-* **Sensor för Laddboxens Dynamiska Strömgräns (`charger_dynamic_current_sensor_id`)**:
-    * **Beskrivning**: Valfri. För att aktivera en optimering som minskar onödiga kommandon, välj här en sensor som visar den **nuvarande aktiva dynamiska strömgränsen** som är satt på laddaren. Om detta fält är konfigurerat, kommer integrationen bara att skicka ett nytt `set_dynamic...`-kommando om mål-strömmen skiljer sig från den nuvarande. Detta kan vara användbart om t.ex. Easee-integrationen tillhandahåller en sådan sensor.
-    * **Krav**: En `sensor`-entitet.
-* **Effektsensor för Elbilens Laddning (`ev_power_sensor_id`)**:
-    * **Beskrivning**: Valfri. Välj en sensor som mäter den faktiska effekt som bilen för närvarande laddas med (i Watt eller kW). Används för att beräkna ackumulerad energi och kostnad för den aktuella laddningssessionen. Om denna sensor saknas kommer sessionsdata för energi och kostnad inte att uppdateras korrekt.
-    * **Krav**: En `sensor`-entitet med `device_class: power`.
-* **Sensor för Bilens Laddningsnivå (SoC) (`ev_soc_sensor_id`)**:
-    * **Beskrivning**: Valfri. Välj en sensor som visar bilens aktuella laddningsnivå i procent (%). Används tillsammans med "Övre SoC-gräns för Laddning" för att stoppa laddning när önskad nivå är nådd.
-    * **Krav**: En `sensor`-entitet med `device_class: battery`.
-* **Övre SoC-gräns för Laddning (`target_soc_limit`)**:
-    * **Beskrivning**: Valfri. Ange ett numeriskt värde (0-100%) som representerar den maximala laddningsnivån du vill att bilen ska nå via denna integrations smarta laddningsfunktioner. Kräver att "Sensor för Bilens Laddningsnivå (SoC)" också är konfigurerad. Om utelämnad, ignoreras SoC-kontroll.
-    * **Krav**: Ett tal mellan 0 och 100.
-* **Uppdateringsintervall (sekunder) (`scan_interval_seconds`)**:
-    * **Beskrivning**: Hur ofta (i sekunder) integrationen ska hämta data och omvärdera laddningsbeslut, utöver de händelsestyrda uppdateringarna (t.ex. prisändringar). Ett kortare intervall ger snabbare reaktioner men kan öka systemlasten.
-    * **Krav**: Ett tal mellan 10 och 3600. Standard är 30 sekunder.
-* **Aktivera debug-loggning (`debug_logging_enabled`)**:
-    * **Beskrivning**: Kryssa i denna ruta för att aktivera detaljerad debug-loggning för integrationen. Detta är användbart för felsökning. Ändringar här kräver en omstart av integrationen (sker automatiskt när du sparar alternativen) för att träda i kraft fullt ut. Loggarna skrivs till Home Assistants standardloggfil (`home-assistant.log`).
-    * **Krav**: Boolean (avkryssad/ikryssad). Standard är avkryssad (False).
+## Hur styrningslogiken fungerar
+Kärnan i integrationen är `SmartEVChargingCoordinator` som periodiskt utvärderar alla indata och fattar beslut om laddningen ska starta, stoppa eller justeras.
 
-## 5. Entiteter Skapade av Integrationen
-Integrationen skapar följande entiteter automatiskt, baserat på ditt konfigurations-ID:
+### Pris/Tid-styrd laddning
+Om denna funktion är aktiverad (via switchen "...Smart Laddning Aktiv") kommer integrationen att försöka ladda bilen när:
+1.  Ett eventuellt konfigurerat tidsschema (`CONF_TIME_SCHEDULE_ENTITY`) är aktivt.
+2.  Det aktuella el-spotpriset (`CONF_PRICE_SENSOR`) är lägre än eller lika med det av användaren inställda maxpriset (via nummerentiteten "...Max Elpris").
+Laddströmmen sätts då vanligtvis till laddarens maximala hårdvarubegränsning (från `CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR` eller ett standardvärde).
 
-* **Switch (`..._smart_charging_enabled`)**: "Avancerad Elbilsladdning Smart Laddning Aktiv"
-    * Slår PÅ/AV den pris/tid-styrda smartladdningen.
-* **Switch (`..._solar_charging_enabled`)**: "Avancerad Elbilsladdning Aktivera Solenergiladdning"
-    * Slår PÅ/AV laddning med solenergiöverskott.
-* **Number (`..._max_charging_price`)**: "Avancerad Elbilsladdning Max Elpris"
-    * Ställer in det maximala spotpriset (kr/kWh) du är villig att betala för Pris/Tid-laddning.
-* **Number (`..._solar_charging_buffer`)**: "Avancerad Elbilsladdning Solenergi Buffer"
-    * Ställer in en buffert (Watt) som ska reserveras för husets övriga behov innan solenergiöverskott används för laddning. T.ex. om satt till 500W, måste solöverskottet vara minst 500W *plus* den minsta laddeffekten för att solenergiladdning ska starta.
-* **Number (`..._min_solar_charge_current_a`)**: "Avancerad Elbilsladdning Minsta Laddström Solenergi"
-    * Ställer in den minsta strömstyrka (Ampere) som bilen ska laddas med när solenergiladdning är aktiv. Detta för att undvika att laddningen startar och stoppar kontinuerligt vid små överskott. Måste vara minst 6A för de flesta laddboxar.
-* **Sensor (`..._session_energy`)**: "Avancerad Elbilsladdning Session Energi"
-    * Visar ackumulerad energi (kWh) för den pågående smarta laddningssessionen. Nollställs när en ny session startar.
-* **Sensor (`..._session_cost`)**: "Avancerad Elbilsladdning Session Kostnad"
-    * Visar den ackumulerade kostnaden (SEK, eller annan basvaluta beroende på prissensor) för den pågående smarta laddningssessionen (baserat på spotpris + ev. påslag, gäller primärt för Pris/Tid-läget). Nollställs när en ny session startar.
-* **Sensor (`..._active_control_mode`)**: "Avancerad Elbilsladdning Aktivt Styrningsläge"
-    * Visar det faktiska styrningsläget som för närvarande är aktivt och kontrollerar laddningen: "PRIS_TID", "SOLENERGI" eller "AV".
+### Solenergiladdning
+Om denna funktion är aktiverad (via switchen "...Aktivera Solenergiladdning") och Pris/Tid-laddning inte är aktiv, försöker integrationen ladda med överskottsenergi från solpaneler. Detta sker när:
+1.  Ett eventuellt konfigurerat tidsschema för solenergiladdning (`CONF_SOLAR_SCHEDULE_ENTITY`) är aktivt.
+2.  Det finns tillräckligt med solöverskott (Solproduktion - Husförbrukning - Solenergi Buffer) för att driva laddaren med minst den inställda minimiströmmen för solenergiladdning.
+3.  Detta överskott har varit stabilt under en viss tid (`SOLAR_SURPLUS_DELAY_SECONDS`) för att undvika korta start/stopp.
+Laddströmmen anpassas dynamiskt efter tillgängligt överskott.
 
-## 6. Kärnlogik och Styrningsstrategier
-All styrningslogik hanteras av en central "koordinator" i integrationen. Den uppdateras både periodiskt (baserat på ditt inställda "Uppdateringsintervall") och omedelbart när viktiga sensorer ändrar tillstånd (t.ex. laddarstatus, elpris, solproduktion, SoC).
+### SoC-gräns (State of Charge)
+Om en SoC-sensor (`CONF_EV_SOC_SENSOR`) och en övre SoC-gräns (`CONF_TARGET_SOC_LIMIT`) är konfigurerade, kommer all smart laddning (både Pris/Tid och Solenergi) att förhindras eller pausas om bilens aktuella laddningsnivå når eller överskrider denna gräns.
 
-Detaljerad information om logiken finns i utvecklingsdokumentationen.
+### Prioritering mellan lägen
+Styrningslogiken följer en prioriteringsordning:
+1.  **SoC-gräns:** Har högst prioritet och kan stoppa all smart laddning.
+2.  **Pris/Tid-styrd laddning:** Om SoC tillåter och villkoren för Pris/Tid är uppfyllda, aktiveras detta läge.
+3.  **Solenergiladdning:** Om SoC tillåter och Pris/Tid-laddning *inte* är aktivt, kan solenergiladdning aktiveras om dess villkor är uppfyllda.
+Om inga smarta lägen är aktiva eller deras villkor uppfylls, går laddningen över till manuell kontroll (eller vad laddarens egna eventuella scheman dikterar).
 
-## 7. Felsökning
-* **Kontrollera Loggarna**: Om något inte fungerar som förväntat, aktivera "debug-loggning" via integrationens alternativ och inspektera Home Assistants loggfil (`config/home-assistant.log`). Leta efter meddelanden från `custom_components.smart_ev_charging`.
-* **Verifiera Entiteter**: Säkerställ att alla sensorer och hjälpare du konfigurerat i integrationen faktiskt existerar i Home Assistant och visar korrekta värden.
-* **Easee-integrationen**: Se till att den grundläggande Easee-integrationen fungerar korrekt och att du kan styra laddaren manuellt via den.
-* **Scheman**: Dubbelkolla att dina `schedule`-hjälpare är korrekt konfigurerade och är PÅ (aktiva) när du förväntar dig att laddning ska ske.
-* **Starta Om**: Ibland kan en omstart av Home Assistant eller enbart en omladdning av integrationen (via integrationssidan) lösa tillfälliga problem.
+## Felsökning
+*(Här kan vanliga problem och lösningar listas, t.ex. varför laddning inte startar, loggkontroller, etc.)*
+* **Debug-loggning:** Kan aktiveras via integrationens alternativ för att få mer detaljerad information i Home Assistant-loggarna.
+* **Kontrollera externa sensorer:** Säkerställ att alla sensorer du har konfigurerat (elpris, SoC, effekt etc.) rapporterar korrekta och tillgängliga värden i Home Assistant.
+* **Enhets-ID:n för interna entiteter:** Om du behöver felsöka eller använda de av integrationen skapade switcharna/numren i automationer, har de unika ID:n baserade på konfigurationspostens ID och fasta suffix (t.ex. `..._smart_charging_enabled`).
 
-För ytterligare support, överväg att skapa ett "Issue" på integrationens GitHub-sida (om tillgängligt).
+## Testfall
+Nedan beskrivs de automatiska tester som har utvecklats för att säkerställa integrationens funktionalitet. Dessa tester körs med `pytest` och testramverket `pytest-homeassistant-custom-component`.
+
+### Fil: `tests/test_init.py`
+* **Testfunktion:** `test_load_and_unload_entry`
+    * **Syfte:** Verifierar den mest grundläggande livscykeln: att integrationen kan laddas korrekt baserat på en konfiguration och sedan avladdas utan fel.
+    * **Scenario/Förutsättningar:** En mockad `ConfigEntry` skapas med de obligatoriska konfigurationsfälten. Externa sensorer (status, huvudenhetens strömbrytare, elpris) får initiala, giltiga tillstånd.
+    * **Utförande & Förväntat Resultat:** Integrationen startas via `hass.config_entries.async_setup()`. Kontrollerar att status blir `LOADED` och att en av integrationens entiteter (t.ex. switchen för "Smart Laddning Aktiv") skapats med sitt standardtillstånd (AV). Därefter avladdas integrationen via `hass.config_entries.async_unload()` och status kontrolleras till `NOT_LOADED`.
+
+### Fil: `tests/test_coordinator.py`
+* **Testfunktion:** `test_price_time_charging_starts_when_conditions_are_met`
+    * **Syfte:** Säkerställer att koordinatorns logik startar Pris/Tid-laddning när alla nödvändiga villkor är uppfyllda.
+    * **Scenario/Förutsättningar:** Laddarens status är "redo att ladda", elpriset är under det inställda maxpriset, tidsschemat för Pris/Tid är aktivt, huvudswitchen "Smart Laddning Aktiv" är PÅ, och solenergiladdning är explicit satt till AV för att isolera testet.
+    * **Utförande & Förväntat Resultat:** Koordinatorn uppdateras manuellt. Testet förväntar sig att tjänsteanrop görs till Easee-laddaren för att sätta dynamisk ström (`set_dynamic_charger_circuit_current`) och återuppta/starta laddning (`resume_charging`). Koordinatorns `active_control_mode` ska bli `CONTROL_MODE_PRICE_TIME`.
+
+* **Testfunktion:** `test_price_time_charging_does_not_call_set_current_unnecessarily`
+    * **Syfte:** Testar optimeringslogiken; att `set_dynamic_charger_circuit_current` *inte* anropas om Pris/Tid-laddning redan pågår och den aktiva dynamiska strömgränsen (från `CONF_CHARGER_DYNAMIC_CURRENT_SENSOR`) redan är densamma som målvärdet.
+    * **Scenario/Förutsättningar:** Alla villkor för Pris/Tid-laddning är uppfyllda, laddaren är i status 'charging', och sensorn för den nuvarande dynamiska strömgränsen visar samma värde som koordinatorns målvärde. Solenergiladdning är AV.
+    * **Utförande & Förväntat Resultat:** Koordinatorn uppdateras. Inga anrop till `set_dynamic_charger_circuit_current` eller `resume_charging` förväntas.
+
+* **Testfunktion:** `test_charging_stops_when_soc_limit_is_reached`
+    * **Syfte:** Kontrollerar att laddningen pausas när bilens batterinivå (SoC) når den konfigurerade övre gränsen.
+    * **Scenario/Förutsättningar:** Laddning pågår. En sensor för bilens SoC (`CONF_EV_SOC_SENSOR`) rapporterar ett värde som är lika med eller högre än den inställda SoC-gränsen (`CONF_TARGET_SOC_LIMIT`).
+    * **Utförande & Förväntat Resultat:** Koordinatorn uppdateras. Anrop till tjänsten för att pausa laddning (`pause_charging`) förväntas. Ett relevant meddelande ska loggas.
+
+* **Testfunktion:** `test_full_day_price_time_simulation`
+    * **Syfte:** En mer omfattande test av Pris/Tid-logiken genom att simulera ett helt dygn, timme för timme, med varierande elpriser och schematillstånd.
+    * **Scenario/Förutsättningar:** Ett slumpmässigt maxpris och slumpmässigt aktiva timmar för laddningsschemat genereras, tillsammans med slumpade timvisa spotpriser. Smart-laddningsswitchen är PÅ, solenergiladdning AV.
+    * **Utförande & Förväntat Resultat:** För varje timme simuleras elpris och schematillstånd. Koordinatorn körs, och testet verifierar att laddningen startar/stoppar korrekt baserat på om priset är under maxpriset och schemat är aktivt.
+
+### Fil: `tests/test_connection_override.py`
+* **Testfunktion:** `test_charger_connection_sequence_and_pause_override`
+    * **Syfte:** Verifierar hanteringen av en typisk anslutningssekvens (bil kopplas in) och att integrationen kan återta kontrollen om en pågående laddning (styrd av Pris/Tid) pausas externt.
+    * **Scenario/Förutsättningar:** Pris/Tid-laddning är konfigurerad att vara aktiv (lågt pris, ingen schemabegränsning).
+    * **Utförande & Förväntat Resultat - Stegvis:**
+        1.  **Frånkopplad:** Initial status `disconnected`. Ingen laddningsaktivitet.
+        2.  **Anslutning:** Status ändras till `awaiting_start`. Integrationen ska starta laddning (`resume_charging`, `set_dynamic_current`).
+        3.  **Laddning pågår:** Status `charging`. Inga onödiga kommandon ska skickas om strömmen är korrekt.
+        4.  **Externt pausad:** Status ändras från `charging` till `awaiting_start`. Integrationen ska omedelbart återuppta laddningen (`resume_charging`) eftersom Pris/Tid-villkoren fortfarande är uppfyllda.
+
+### Fil: `tests/test_solar_to_price_time_transition.py`
+* **Testfunktion:** `test_solar_to_price_time_transition`
+    * **Syfte:** Kontrollerar att Pris/Tid-laddning korrekt prioriteras och tar över från en pågående Solenergiladdning när Pris/Tid-schemat blir aktivt.
+    * **Scenario/Förutsättningar:**
+        * Kl. 19:00: Solenergiladdning är aktiv (god solproduktion, relevanta switchar PÅ, Pris/Tid-schema är AV). Ström är satt baserat på solöverskott (t.ex. 6A efter trefasberäkning och tillräcklig sol).
+        * Kl. 20:00: Pris/Tid-schemat blir aktivt. Elpriset är fortfarande lågt.
+    * **Utförande & Förväntat Resultat:**
+        * Kl. 19:00: `active_control_mode` är `CONTROL_MODE_SOLAR_SURPLUS`. `set_dynamic_current` har anropats med korrekt solenergi-beräknad ström.
+        * Kl. 20:00: `active_control_mode` byter till `CONTROL_MODE_PRICE_TIME`. `set_dynamic_current` anropas igen, nu med maximal hårdvaruström.
+
+### Fil: `tests/test_solar_to_price_time_on_price_drop.py`
+* **Testfunktion:** `test_solar_to_price_time_on_price_drop`
+    * **Syfte:** Verifierar att Pris/Tid-laddning tar över från Solenergiladdning när elpriset sjunker, vilket gör Pris/Tid aktivt och mer prioriterat, även utan schemaändringar.
+    * **Scenario/Förutsättningar:**
+        * Initialt: Högt elpris (över maxgräns för Pris/Tid), god solproduktion. Båda laddningstypernas switchar är PÅ. Inga tidsstyrda scheman. Solenergiladdning är aktiv.
+        * Senare: Elpriset sjunker under maxgränsen för Pris/Tid.
+    * **Utförande & Förväntat Resultat:**
+        * Initialt (högt pris): `active_control_mode` är `CONTROL_MODE_SOLAR_SURPLUS`. Dynamisk ström satt baserat på solöverskott (t.ex. 10A efter trefasjustering).
+        * Efter prissänkning: `active_control_mode` byter till `CONTROL_MODE_PRICE_TIME`. Dynamisk ström sätts till hårdvarumaximum.
+
+### Fil: `tests/test_config_flow_and_options_persistence.py`
+* **Testfunktion:** `test_setup_and_options_modification_flow`
+    * **Syfte:** Testar hela konfigurations- och alternativflödet programmatiskt för att säkerställa att data sparas och återläses korrekt genom UI-simulering.
+    * **Scenario/Förutsättningar:** Använder mockade entitets-ID:n. En slumpmässig SoC-gräns genereras.
+    * **Utförande & Förväntat Resultat - Stegvis:**
+        1.  **Initial Setup:** Skapar integrationen via konfigurationsflödet. Fyller i obligatoriska fält, SoC-sensor och SoC-gräns. Valfria fält lämnas initialt tomma (`None`). Verifierar att `ConfigEntry.data` innehåller korrekta värden.
+        2.  **Öppna Options (Kontroll 1):** Initierar alternativflödet. Verifierar att flödet startar korrekt (formulär visas), vilket implicit visar att `entry.data` är giltigt.
+        3.  **Modifiera Options:** Simulerar att SoC-sensorn tas bort (input `None`), en EV Power-sensor läggs till, och andra valfria fält fylls i. Ändringarna sparas. Verifierar att `ConfigEntry.options` nu innehåller de uppdaterade värdena och att även tidigare `data`-fält nu finns i `options`.
+        4.  **Öppna Options (Kontroll 2):** Initierar alternativflödet igen. Verifierar att flödet startar korrekt, vilket implicit visar att `entry.options` är giltigt och används för att bygga formuläret.
+
+## Bidra
+Se [README.md](README.md) för information om hur du kan bidra till projektet.
+
+## Licens
+Detta projekt är licensierat under Apache 2.0-licensen. Se [LICENSE](../../LICENSE) (eller motsvarande fil i repot) för fullständig licenstext. (Antagande om licens, justera vid behov).
