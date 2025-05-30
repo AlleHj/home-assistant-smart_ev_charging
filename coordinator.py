@@ -48,9 +48,6 @@ from .const import (
     ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER,
     ENTITY_ID_SUFFIX_ACTIVE_CONTROL_MODE_SENSOR,
     EASEE_SERVICE_SET_DYNAMIC_CURRENT,
-    # EASEE_SERVICE_SET_CIRCUIT_MAX_CURRENT, # Oanvänd?
-    # EASEE_SERVICE_ENABLE_CHARGER, # Oanvänd?
-    # EASEE_SERVICE_DISABLE_CHARGER, # Oanvänd?
     EASEE_SERVICE_PAUSE_CHARGING,
     EASEE_SERVICE_RESUME_CHARGING,
     EASEE_STATUS_DISCONNECTED,
@@ -68,7 +65,6 @@ from .const import (
     MAX_CHARGE_CURRENT_A_HW_DEFAULT,
     POWER_MARGIN_W,
     SOLAR_SURPLUS_DELAY_SECONDS,
-    # PRICE_CHECK_INTERVAL_MINUTES, # Oanvänd?
 )
 
 _LOGGER = logging.getLogger(f"custom_components.{DOMAIN}")
@@ -83,54 +79,39 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Initialisera koordinatorn."""
         self.hass = hass
         self.entry = entry
-        # self.config sätts här och uppdateras i början av _async_update_data
         self.config = entry.data | entry.options
 
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(
-                seconds=scan_interval_seconds
-            ),  # Använd det validerade intervallet
+            update_interval=timedelta(seconds=scan_interval_seconds),
         )
         _LOGGER.info(
             "SmartEVChargingCoordinator initialiserad med update_interval: %s sekunder.",
             self.update_interval,
         )
 
-        self.charger_entity_id: str | None = (
-            self._get_charger_entity_id()
-        )  # Försöker hitta en relevant entitet
+        self.charger_entity_id: str | None = self._get_charger_entity_id()
         self.listeners: list[CALLBACK_TYPE] = []
 
-        # Initiera tillståndsvariabler
         self.active_control_mode: str = CONTROL_MODE_MANUAL
         self.should_charge_flag: bool = False
         self.target_charge_current_a: float = MIN_CHARGE_CURRENT_A
         self.active_control_mode_internal: str | None = None
         self.charger_main_switch_state: bool = True
-
         self.last_update_time: datetime = dt_util.utcnow()
         self.session_start_time_utc: datetime | None = None
-
         self._solar_surplus_start_time: datetime | None = None
         self._solar_session_active: bool = False
-
         self._price_time_eligible_for_charging: bool = False
-        self._last_price_check_time: datetime | None = None  # Används inte aktivt f.n.
-
+        self._last_price_check_time: datetime | None = None
         self.smart_enable_switch_entity_id: str | None = None
         self.max_price_entity_id: str | None = None
         self.solar_enable_switch_entity_id: str | None = None
         self.solar_buffer_entity_id: str | None = None
         self.min_solar_charge_current_entity_id: str | None = None
         self._internal_entities_resolved: bool = False
-
-        # _setup_listeners() anropas normalt efter att _resolve_internal_entities har körts framgångsrikt
-        # och även vid _async_first_refresh. För att säkerställa att de sätts upp tidigt om allt är redo:
-        # self.hass.create_task(self._resolve_and_setup_listeners_if_ready())
-        # Alternativt, låt _async_first_refresh hantera det.
 
     async def _resolve_and_setup_listeners_if_ready(self):
         """Försöker lösa interna entiteter och sätter upp lyssnare om lyckat."""
@@ -143,14 +124,11 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not device_id:
             _LOGGER.error("Ingen laddarenhet (CONF_CHARGER_DEVICE) är konfigurerad.")
             return None
-        # Vi förlitar oss på att CONF_CHARGER_ENABLED_SWITCH_ID är korrekt satt för Easee-switch.
-        # Tjänsteanrop använder oftast device_id.
         return self.config.get(CONF_CHARGER_ENABLED_SWITCH_ID)
 
     async def _resolve_internal_entities(self) -> bool:
         if self._internal_entities_resolved:
             return True
-
         _LOGGER.debug("Koordinator: _resolve_internal_entities STARTAR.")
         try:
             ent_reg: EntityRegistry = async_get_entity_registry(self.hass)
@@ -179,7 +157,6 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 DOMAIN,
                 f"{self.entry.entry_id}_{ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER}",
             )
-
             if not all(
                 [
                     self.smart_enable_switch_entity_id,
@@ -191,10 +168,9 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ):
                 _LOGGER.debug(
                     "Ett eller flera interna ID:n ej redo under _resolve_internal_entities."
-                )  # Debug istället för Warning om det är normalt vid start
+                )
                 self._internal_entities_resolved = False
                 return False
-
             self._internal_entities_resolved = True
             _LOGGER.debug("Koordinator: Interna ID:n OK.")
             return True
@@ -207,30 +183,20 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Sätter upp lyssnare för relevanta entitetsförändringar."""
         _LOGGER.debug("Sätter upp lyssnare...")
         self._remove_listeners()
-
         external_entities = [
             self.config.get(CONF_STATUS_SENSOR),
             self.config.get(CONF_PRICE_SENSOR),
-            # self.config.get(CONF_SURCHARGE_HELPER), # Påslag påverkar inte logik, bara kostnadssensor (borttagen)
             self.config.get(CONF_TIME_SCHEDULE_ENTITY),
             self.config.get(CONF_HOUSE_POWER_SENSOR),
             self.config.get(CONF_SOLAR_PRODUCTION_SENSOR),
             self.config.get(CONF_SOLAR_SCHEDULE_ENTITY),
             self.config.get(CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR),
-            # self.config.get(CONF_EV_POWER_SENSOR), # Används inte längre aktivt av koordinatorlogik
             self.config.get(CONF_CHARGER_ENABLED_SWITCH_ID),
             self.config.get(CONF_EV_SOC_SENSOR),
         ]
-
-        # Internt skapade entiteter som koordinatorn behöver reagera på (om några)
-        # Dessa läses av direkt i _async_update_data, så explicita lyssnare kanske inte behövs
-        # om pollingintervallet är tillräckligt tätt eller om de inte ändras utanför HA:s state machine.
-        # För switchar och nummer som sätts via UI, kommer en options_update_listener att trigga en reload + refresh.
-
         all_entities_to_listen = [
             entity_id for entity_id in external_entities if entity_id
         ]
-
         if all_entities_to_listen:
             _LOGGER.debug(
                 "Lyssnar på tillståndsförändringar för externa entiteter: %s",
@@ -244,9 +210,7 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             )
         else:
-            _LOGGER.info(
-                "Inga externa entiteter konfigurerade för lyssning."
-            )  # Info istället för Warning
+            _LOGGER.info("Inga externa entiteter konfigurerade för lyssning.")
 
     def _remove_listeners(self) -> None:
         """Tar bort alla aktiva lyssnare."""
@@ -262,17 +226,12 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entity_id = event.data.get("entity_id")
         old_state_obj = event.data.get("old_state")
         new_state_obj = event.data.get("new_state")
-
         old_state_val = old_state_obj.state if old_state_obj else "None"
         new_state_val = new_state_obj.state if new_state_obj else "None"
-
-        # Undvik onödig refresh om bara attribut ändrats (förutom för status_sensor)
         if old_state_val == new_state_val and entity_id != self.config.get(
             CONF_STATUS_SENSOR
         ):
-            # _LOGGER.debug("Ignorerar tillståndsförändring för %s, state oförändrat: %s", entity_id, new_state_val)
             return
-
         _LOGGER.info(
             "Tillståndsförändring detekterad för %s: Gammalt=%s, Nytt=%s. Begär refresh.",
             entity_id,
@@ -280,13 +239,6 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             new_state_val,
         )
         await self.async_request_refresh()
-
-    # ... (resten av metoderna: _get_number_value, _get_spot_price_in_kr, etc. är oförändrade från v0.1.33) ...
-    # ... (_get_power_value, _reset_session_data, _control_charger är oförändrade från v0.1.33) ...
-    # ... (_async_update_data, _current_coordinator_data, cleanup är oförändrade från v0.1.33) ...
-    # Se till att hela filen kopieras från den versionen, med endast __init__ signaturen ändrad enligt ovan.
-    # Nedan följer de metoderna för fullständighet, men de är logiskt oförändrade från den version du hade
-    # förutom syntaxkorrigeringar och borttagning av energi/kostnadslogik.
 
     async def _get_number_value(
         self,
@@ -335,12 +287,12 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 price /= 100
             if "mwh" in unit:
                 price /= 1000
-            if not (-5 < price < 20):  # Rimlighetskontroll
+            if not (-5 < price < 20):
                 _LOGGER.warning(
                     "Elpris '%s %s' från %s verkar orimligt.", price, unit, entity_id
                 )
                 return None
-            if currency and currency != "SEK":  # Logga om det inte är SEK
+            if currency and currency != "SEK":
                 _LOGGER.warning(
                     "Elprissensor %s har valuta %s, men SEK förväntas.",
                     entity_id,
@@ -563,9 +515,7 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         _LOGGER.debug("Koordinatorn kör _async_update_data")
-
         self.config = self.entry.data | self.entry.options
-
         if not self._internal_entities_resolved:
             await self._resolve_internal_entities()
             if not self._internal_entities_resolved:
@@ -579,7 +529,6 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
 
         current_time = dt_util.utcnow()
-
         charger_status_sensor_id = self.config.get(CONF_STATUS_SENSOR)
         charger_status_state = (
             self.hass.states.get(str(charger_status_sensor_id))
@@ -632,7 +581,6 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         total_price_kr = (
             (current_price_kr + surcharge_kr) if current_price_kr is not None else None
         )
-
         max_accepted_price_kr = (
             await self._get_number_value(
                 self.max_price_entity_id, 999.0, is_config_key=False
@@ -725,10 +673,9 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             if self.session_start_time_utc is not None:
                 self._reset_session_data(reason_for_action)
-            if charger_status == EASEE_STATUS_CHARGING:
-                await self._control_charger(
-                    False, MIN_CHARGE_CURRENT_A, reason_for_action
-                )
+            # ---- BUGGFIX HÄR ----
+            # Det överflödiga anropet till _control_charger har tagits bort från denna sektion.
+            # Beslutet fattas nu enbart av det gemensamma anropet i slutet av funktionen.
 
         elif solar_charging_enabled and solar_schedule_active:
             self.active_control_mode_internal = CONTROL_MODE_SOLAR_SURPLUS
