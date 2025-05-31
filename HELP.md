@@ -65,7 +65,7 @@ Kärnan i integrationen är `SmartEVChargingCoordinator` som periodiskt utvärde
 ### Pris/Tid-styrd laddning
 Om denna funktion är aktiverad (via switchen "...Smart Laddning Aktiv") kommer integrationen att försöka ladda bilen när:
 1.  Ett eventuellt konfigurerat tidsschema (`CONF_TIME_SCHEDULE_ENTITY`) är aktivt.
-2.  Det aktuella el-spotpriset (`CONF_PRICE_SENSOR`) är lägre än eller lika med det av användaren inställda maxpriset (via nummerentiteten "...Max Elpris").
+2.  Det aktuella el-spotpriset (`CONF_PRICE_SENSOR`) plus eventuellt påslag (`CONF_SURCHARGE_HELPER`) är lägre än eller lika med det av användaren inställda maxpriset (via nummerentiteten "...Max Elpris").
 Laddströmmen sätts då vanligtvis till laddarens maximala hårdvarubegränsning (från `CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR` eller ett standardvärde).
 
 ### Solenergiladdning
@@ -201,6 +201,16 @@ Nedan beskrivs de automatiska tester som har utvecklats för att säkerställa i
     * **Syfte:** Verifierar att en pågående smart laddningssession pausas korrekt och styrningsläget återställs om huvudströmbrytaren stängs av manuellt.
     * **Scenario/Förutsättningar:** En Pris/Tid-styrd laddningssession startas. Därefter simuleras att huvudströmbrytaren stängs AV.
     * **Utförande & Förväntat Resultat:** Koordinatorn uppdateras efter att strömbrytaren stängts av. Laddningen pausas (`easee.pause_charging` anropas). Aktivt styrningsläge visar `CONTROL_MODE_MANUAL`. Loggmeddelande indikerar att huvudströmbrytaren är AV.
+
+### Fil: `tests/test_dynamisk_justering_solenergi.py`
+* **Testfunktion:** `test_dynamic_current_adjustment_for_solar_charging`
+    * **Syfte:** Verifierar den matematiska beräkningen av tillgänglig laddström från solenergi och att koordinatorn korrekt justerar laddarens dynamiska strömgräns när förutsättningarna (husets förbrukning) ändras, med hänsyn till fördröjning.
+    * **Scenario/Förutsättningar:**
+        * Steg 1: Stor solproduktion (7000 W), låg husförbrukning (500 W), buffert (500 W). Förväntad ström: 8A.
+        * Steg 2: Samma solproduktion, men ökad husförbrukning (1500 W). Förväntad ström: 7A.
+    * **Utförande & Förväntat Resultat:**
+        * Steg 1: Efter initial `async_refresh` och att `SOLAR_SURPLUS_DELAY_SECONDS` har passerat (via `freezer.tick`), ska ytterligare en `async_refresh` leda till att laddning startar (`resume_charging`) och ström sätts till 8A (`set_dynamic_current`). Styrningsläge blir `CONTROL_MODE_SOLAR_SURPLUS`.
+        * Steg 2: Husförbrukningen ändras, `async_refresh` körs. Strömmen ska justeras till 7A via `set_dynamic_current`. Styrningsläge förblir `CONTROL_MODE_SOLAR_SURPLUS`.
 
 ## Bidra
 Se [README.md](README.md) för information om hur du kan bidra till projektet.
