@@ -45,7 +45,12 @@ EASEE_SERVICE_RESUME_CHARGING = "resume_charging"
 # Exempel på statusvärden från Easee
 EASEE_STATUS_DISCONNECTED = ["disconnected", "car_disconnected"]
 EASEE_STATUS_AWAITING_START = "awaiting_start"
-EASEE_STATUS_READY_TO_CHARGE = ["ready_to_charge", "charger_ready", "awaiting_schedule", "standby"]
+EASEE_STATUS_READY_TO_CHARGE = [
+    "ready_to_charge",
+    "charger_ready",
+    "awaiting_schedule",
+    "standby",
+]
 EASEE_STATUS_CHARGING = "charging"
 EASEE_STATUS_PAUSED = "paused"
 EASEE_STATUS_COMPLETED = "completed"
@@ -63,3 +68,7 @@ MAX_CHARGE_CURRENT_A_HW_DEFAULT = 16
 POWER_MARGIN_W = 300
 SOLAR_SURPLUS_DELAY_SECONDS = 300
 PRICE_CHECK_INTERVAL_MINUTES = 15
+
+# Fysiska konstanter för beräkningar
+PHASES = 3  # Antal faser som normalt används för laddning (kan behöva justeras om 1-fas är vanligt)
+VOLTAGE_PHASE_NEUTRAL = 230  # Standard fasspänning i Sverige

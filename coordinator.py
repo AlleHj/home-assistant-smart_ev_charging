@@ -66,6 +66,8 @@ from .const import (
     MAX_CHARGE_CURRENT_A_HW_DEFAULT,
     POWER_MARGIN_W,
     SOLAR_SURPLUS_DELAY_SECONDS,
+    PHASES,
+    VOLTAGE_PHASE_NEUTRAL,
 )
 
 _LOGGER = logging.getLogger(f"custom_components.{DOMAIN}")
@@ -340,7 +342,8 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _reset_session_data(self, reason: str = "Okänd") -> None:
         _LOGGER.info("Återställer sessionsdata. Anledning: %s", reason)
-        self.session_start_time_utc = dt_util.utcnow()
+        # self.session_start_time_utc = dt_util.utcnow()
+        self.session_start_time_utc = None  # Avslutar sessionen
         # Eventuellt andra sessionsspecifika variabler kan återställas här
 
     async def _control_charger(
@@ -711,8 +714,23 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         reason_for_action = "Ingen styrning aktiv."
         self.active_control_mode_internal = CONTROL_MODE_MANUAL
 
-        # Högsta prioritet: Huvudströmbrytare eller SoC-gräns
-        if not self.charger_main_switch_state:
+        # Högsta prioritet: Frånkopplad laddare
+        if (
+            charger_status in EASEE_STATUS_DISCONNECTED
+            or charger_status == EASEE_STATUS_OFFLINE
+        ):
+            self.active_control_mode_internal = CONTROL_MODE_MANUAL
+            self.should_charge_flag = False
+            reason_for_action = (
+                f"Laddaren är frånkopplad/offline (status: {charger_status})."
+            )
+            if self.session_start_time_utc is not None:
+                self._reset_session_data(reason_for_action)
+            self._solar_surplus_start_time = None
+            self._solar_session_active = False
+            self._price_time_eligible_for_charging = False
+        # Näst högsta prioritet: Huvudströmbrytare eller SoC-gräns
+        elif not self.charger_main_switch_state:
             reason_for_action = "Huvudströmbrytare för laddbox är AV."
             if self.session_start_time_utc is not None:
                 self._reset_session_data(reason_for_action)
@@ -776,7 +794,7 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 if available_solar_surplus_w > 0:
                     calculated_solar_current_a = math.floor(
-                        available_solar_surplus_w / (3 * 230)
+                        available_solar_surplus_w / (PHASES  * VOLTAGE_PHASE_NEUTRAL)
                     )  # För 3-fas, 230V fas-neutral
                     if calculated_solar_current_a >= min_solar_charge_current_a:
                         if not self._solar_session_active:
