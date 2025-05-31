@@ -10,7 +10,6 @@ Detta dokument beskriver hur du installerar, konfigurerar och använder den anpa
 - [Konfiguration](#konfiguration)
   - [Obligatoriska fält](#obligatoriska-fält)
   - [Valfria fält och deras betydelse](#valfria-fält-och-deras-betydelse)
-  - [Exempel på sensorer](#exempel-på-sensorer)
 - [Entiteter som skapas av integrationen](#entiteter-som-skapas-av-integrationen)
 - [Hur styrningslogiken fungerar](#hur-styrningslogiken-fungerar)
   - [Pris/Tid-styrd laddning](#pristid-styrd-laddning)
@@ -49,8 +48,7 @@ Dessa måste fyllas i för att integrationen ska kunna starta:
 
 ### Valfria fält och deras betydelse
 En komplett lista och beskrivning av alla konfigurationsparametrar, både obligatoriska och valfria (som t.ex. SoC-sensor, solproduktion, tidsscheman), finns i UI:t när du konfigurerar integrationen och detaljeras ytterligare i detta dokument under relevanta funktionsbeskrivningar.
-
-*(Här skulle en mer detaljerad genomgång av varje konfigurationsalternativ kunna läggas in, liknande det som finns i `Utveckling av Custom Component Avancerad Elbilsladdning för Home Assistant.docx`)*
+Se även `config_flow.py` för en teknisk översikt av alla fält.
 
 ## Entiteter som skapas av integrationen
 Integrationen skapar automatiskt följande entiteter för att du ska kunna interagera med och övervaka de smarta laddningsfunktionerna:
@@ -82,16 +80,15 @@ Om en SoC-sensor (`CONF_EV_SOC_SENSOR`) och en övre SoC-gräns (`CONF_TARGET_SO
 
 ### Prioritering mellan lägen
 Styrningslogiken följer en prioriteringsordning:
-1.  **SoC-gräns:** Har högst prioritet och kan stoppa all smart laddning.
+1.  **SoC-gräns:** Har högst prioritet och kan stoppa/förhindra all smart laddning.
 2.  **Pris/Tid-styrd laddning:** Om SoC tillåter och villkoren för Pris/Tid är uppfyllda, aktiveras detta läge.
 3.  **Solenergiladdning:** Om SoC tillåter och Pris/Tid-laddning *inte* är aktivt, kan solenergiladdning aktiveras om dess villkor är uppfyllda.
 Om inga smarta lägen är aktiva eller deras villkor uppfylls, går laddningen över till manuell kontroll (eller vad laddarens egna eventuella scheman dikterar).
 
 ## Felsökning
-*(Här kan vanliga problem och lösningar listas, t.ex. varför laddning inte startar, loggkontroller, etc.)*
-* **Debug-loggning:** Kan aktiveras via integrationens alternativ för att få mer detaljerad information i Home Assistant-loggarna.
+* **Debug-loggning:** Kan aktiveras via integrationens alternativ (`CONF_DEBUG_LOGGING`) för att få mer detaljerad information i Home Assistant-loggarna (`custom_components.smart_ev_charging`).
 * **Kontrollera externa sensorer:** Säkerställ att alla sensorer du har konfigurerat (elpris, SoC, effekt etc.) rapporterar korrekta och tillgängliga värden i Home Assistant.
-* **Enhets-ID:n för interna entiteter:** Om du behöver felsöka eller använda de av integrationen skapade switcharna/numren i automationer, har de unika ID:n baserade på konfigurationspostens ID och fasta suffix (t.ex. `..._smart_charging_enabled`).
+* **Enhets-ID:n för interna entiteter:** De av integrationen skapade entiteterna (switchar, nummer, sensor) får ID:n baserade på `DEFAULT_NAME` ("Avancerad Elbilsladdning") och deras specifika funktion, t.ex. `switch.avancerad_elbilsladdning_smart_laddning_aktiv`.
 
 ## Testfall
 Nedan beskrivs de automatiska tester som har utvecklats för att säkerställa integrationens funktionalitet. Dessa tester körs med `pytest` och testramverket `pytest-homeassistant-custom-component`.
@@ -137,7 +134,7 @@ Nedan beskrivs de automatiska tester som har utvecklats för att säkerställa i
 * **Testfunktion:** `test_solar_to_price_time_transition`
     * **Syfte:** Kontrollerar att Pris/Tid-laddning korrekt prioriteras och tar över från en pågående Solenergiladdning när Pris/Tid-schemat blir aktivt.
     * **Scenario/Förutsättningar:**
-        * Kl. 19:00: Solenergiladdning är aktiv (god solproduktion, relevanta switchar PÅ, Pris/Tid-schema är AV). Ström är satt baserat på solöverskott (t.ex. 6A efter trefasberäkning och tillräcklig sol).
+        * Kl. 19:00: Solenergiladdning är aktiv (god solproduktion, relevanta switchar PÅ, Pris/Tid-schema är AV). Ström är satt baserat på solöverskott.
         * Kl. 20:00: Pris/Tid-schemat blir aktivt. Elpriset är fortfarande lågt.
     * **Utförande & Förväntat Resultat:**
         * Kl. 19:00: `active_control_mode` är `CONTROL_MODE_SOLAR_SURPLUS`. `set_dynamic_current` har anropats med korrekt solenergi-beräknad ström.
@@ -150,7 +147,7 @@ Nedan beskrivs de automatiska tester som har utvecklats för att säkerställa i
         * Initialt: Högt elpris (över maxgräns för Pris/Tid), god solproduktion. Båda laddningstypernas switchar är PÅ. Inga tidsstyrda scheman. Solenergiladdning är aktiv.
         * Senare: Elpriset sjunker under maxgränsen för Pris/Tid.
     * **Utförande & Förväntat Resultat:**
-        * Initialt (högt pris): `active_control_mode` är `CONTROL_MODE_SOLAR_SURPLUS`. Dynamisk ström satt baserat på solöverskott (t.ex. 10A efter trefasjustering).
+        * Initialt (högt pris): `active_control_mode` är `CONTROL_MODE_SOLAR_SURPLUS`. Dynamisk ström satt baserat på solöverskott.
         * Efter prissänkning: `active_control_mode` byter till `CONTROL_MODE_PRICE_TIME`. Dynamisk ström sätts till hårdvarumaximum.
 
 ### Fil: `tests/test_config_flow_and_options_persistence.py`
@@ -159,12 +156,54 @@ Nedan beskrivs de automatiska tester som har utvecklats för att säkerställa i
     * **Scenario/Förutsättningar:** Använder mockade entitets-ID:n. En slumpmässig SoC-gräns genereras.
     * **Utförande & Förväntat Resultat - Stegvis:**
         1.  **Initial Setup:** Skapar integrationen via konfigurationsflödet. Fyller i obligatoriska fält, SoC-sensor och SoC-gräns. Valfria fält lämnas initialt tomma (`None`). Verifierar att `ConfigEntry.data` innehåller korrekta värden.
-        2.  **Öppna Options (Kontroll 1):** Initierar alternativflödet. Verifierar att flödet startar korrekt (formulär visas), vilket implicit visar att `entry.data` är giltigt.
-        3.  **Modifiera Options:** Simulerar att SoC-sensorn tas bort (input `None`), en EV Power-sensor läggs till, och andra valfria fält fylls i. Ändringarna sparas. Verifierar att `ConfigEntry.options` nu innehåller de uppdaterade värdena och att även tidigare `data`-fält nu finns i `options`.
-        4.  **Öppna Options (Kontroll 2):** Initierar alternativflödet igen. Verifierar att flödet startar korrekt, vilket implicit visar att `entry.options` är giltigt och används för att bygga formuläret.
+        2.  **Öppna Options (Kontroll 1):** Initierar alternativflödet. Verifierar att flödet startar korrekt.
+        3.  **Modifiera Options:** Simulerar att SoC-sensorn tas bort (input `None`), en EV Power-sensor läggs till, och andra valfria fält fylls i. Ändringarna sparas. Verifierar att `ConfigEntry.options` nu innehåller de uppdaterade värdena.
+        4.  **Öppna Options (Kontroll 2):** Initierar alternativflödet igen. Verifierar att flödet startar korrekt, vilket implicit visar att `entry.options` är giltigt.
+
+### Fil: `tests/test_loggning_vid_frånkoppling.py`
+* **Testfunktion:** `test_logging_and_state_on_disconnect`
+    * **Syfte:** Verifierar att korrekt loggning sker och att sessionsdata återställs när en bil kopplas från under pågående laddning, samt att loggningen inte upprepas vid efterföljande kontroller.
+    * **Scenario/Förutsättningar:** En Pris/Tid-laddning simuleras som aktiv. Laddarens status är initialt 'charging'.
+    * **Utförande & Förväntat Resultat - Stegvis:**
+        1.  **Frånkoppling:** Status ändras till 'disconnected'. Koordinatorn uppdateras. Loggen ska innehålla "Återställer sessionsdata..." exakt en gång. Styrningsläget ska bli "AV". Koordinatorns `session_start_time_utc` ska nollställas.
+        2.  **Repeterad kontroll:** Koordinatorn uppdateras igen med status 'disconnected'. Inga nya relevanta varnings- eller infomeddelanden ska loggas.
+
+### Fil: `tests/test_solenergiladdning_livscykel.py`
+* **Testfunktion:** `test_solar_charging_full_lifecycle`
+    * **Syfte:** Testar hela livscykeln för solenergiladdning, från otillräckligt överskott, genom fördröjning, till start, dynamisk justering av ström och slutligen paus när överskottet försvinner.
+    * **Scenario/Förutsättningar:** Integrationen konfigureras för solenergiladdning (relevanta sensorer mockas, switchar och nummer-entiteter sätts). Olika nivåer av solproduktion och husförbrukning simuleras.
+    * **Utförande & Förväntat Resultat - Stegvis:**
+        1.  **Inget/Otillräckligt överskott:** Ingen laddning startar. Styrningsläge `CONTROL_MODE_MANUAL`.
+        2.  **Tillräckligt överskott (inom fördröjning):** Ingen laddning än, men fördröjningstimer (`_solar_surplus_start_time`) initieras.
+        3.  **Laddning startar efter fördröjning:** Laddning återupptas, korrekt ström sätts. Styrningsläge `CONTROL_MODE_SOLAR_SURPLUS`.
+        4.  **Laddström justeras dynamiskt:** Solproduktionen ändras, laddströmmen anpassas.
+        5.  **Laddning pausas:** Solöverskottet försvinner, laddningen pausas. Styrningsläge `CONTROL_MODE_MANUAL`.
+
+### Fil: `tests/test_active_control_mode_sensor.py`
+* **Testfunktion:** `test_active_control_mode_sensor_updates`
+    * **Syfte:** Verifierar att sensorn `sensor.avancerad_elbilsladdning_aktivt_styrningslage` uppdateras korrekt till `PRIS_TID`, `SOLENERGI` eller `AV` (Manuell) baserat på koordinatorns beslut.
+    * **Scenario/Förutsättningar:** Olika förutsättningar skapas för att trigga respektive styrningsläge (Pris/Tid-villkor uppfyllda, Solenergi-villkor uppfyllda inklusive fördröjning, inga smarta lägen aktiva).
+    * **Utförande & Förväntat Resultat:** Efter varje scenarioförändring och koordinatoruppdatering kontrolleras att sensorns tillstånd matchar det förväntade aktiva styrningsläget.
+
+### Fil: `tests/test_soc_limit_prevents_charging_start.py`
+* **Testfunktion:** `test_charging_is_prevented_by_soc_limit`
+    * **Syfte:** Säkerställer att SoC-gränsen har högsta prioritet och kan förhindra att en laddningssession initieras om gränsen redan är nådd.
+    * **Scenario/Förutsättningar:** SoC-gränsen är satt (t.ex. 85%). Bilens faktiska SoC rapporteras vara högre (t.ex. 86%). Andra villkor för Pris/Tid-laddning är uppfyllda.
+    * **Utförande & Förväntat Resultat:** Koordinatorn uppdateras. Inga tjänsteanrop för att starta laddning eller sätta ström görs. Aktivt styrningsläge förblir `CONTROL_MODE_MANUAL`. Relevant loggmeddelande om att SoC-gränsen nåtts förväntas.
+
+### Fil: `tests/test_huvudstrombrytare_interaktion.py`
+* **Testfunktion:** `test_main_switch_off_prevents_charging`
+    * **Syfte:** Verifierar att integrationen respekterar huvudströmbrytarens AV-läge och inte försöker starta laddning, även om andra villkor för smart laddning är uppfyllda.
+    * **Scenario/Förutsättningar:** Huvudströmbrytaren för laddboxen är satt till `STATE_OFF`. Villkor för Pris/Tid-laddning är uppfyllda.
+    * **Utförande & Förväntat Resultat:** Koordinatorn uppdateras. Ingen laddning initieras. Aktivt styrningsläge visar `CONTROL_MODE_MANUAL`. Loggmeddelande indikerar att huvudströmbrytaren är AV.
+
+* **Testfunktion:** `test_manual_turn_off_main_switch_stops_charging`
+    * **Syfte:** Verifierar att en pågående smart laddningssession pausas korrekt och styrningsläget återställs om huvudströmbrytaren stängs av manuellt.
+    * **Scenario/Förutsättningar:** En Pris/Tid-styrd laddningssession startas. Därefter simuleras att huvudströmbrytaren stängs AV.
+    * **Utförande & Förväntat Resultat:** Koordinatorn uppdateras efter att strömbrytaren stängts av. Laddningen pausas (`easee.pause_charging` anropas). Aktivt styrningsläge visar `CONTROL_MODE_MANUAL`. Loggmeddelande indikerar att huvudströmbrytaren är AV.
 
 ## Bidra
 Se [README.md](README.md) för information om hur du kan bidra till projektet.
 
 ## Licens
-Detta projekt är licensierat under Apache 2.0-licensen. Se [LICENSE](../../LICENSE) (eller motsvarande fil i repot) för fullständig licenstext. (Antagande om licens, justera vid behov).
+Detta projekt är licensierat under Apache 2.0-licensen.
