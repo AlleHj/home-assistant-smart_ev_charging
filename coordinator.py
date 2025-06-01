@@ -334,6 +334,16 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _control_charger(
         self, should_charge: bool, current_a: float, reason: str
     ) -> None:
+        # >>> NY KOD STARTAR HÄR <<<
+        # self.charger_main_switch_state uppdateras i _async_update_data precis innan denna funktion anropas.
+        if not self.charger_main_switch_state:  # Om huvudströmbrytaren är AV
+            _LOGGER.info(
+                "Huvudströmbrytare är AV (enligt koordinatorns interna tillstånd). "
+                "Inga kommandon skickas till laddaren."
+            )
+            return  # Avbryt och skicka inga kommandon
+        # >>> NY KOD SLUTAR HÄR <<<
+
         charger_master_switch_id = self.config.get(CONF_CHARGER_ENABLED_SWITCH_ID)
         status_sensor_id = self.config.get(CONF_STATUS_SENSOR)
         charger_status_state = (
@@ -458,10 +468,14 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
                     await set_current_if_needed_locally()
                     if charger_status != EASEE_STATUS_CHARGING:
+                        # -- KORRIGERING 1 av 2: Använder 'action_command' med 'resume' för att starta.
                         await self.hass.services.async_call(
                             "easee",
-                            EASEE_SERVICE_RESUME_CHARGING,
-                            {"charger_id": self.config.get(CONF_CHARGER_DEVICE)},
+                            "action_command",
+                            {
+                                "device_id": self.config.get(CONF_CHARGER_DEVICE),
+                                "action_command": "resume",
+                            },
                             blocking=False,
                         )
 
@@ -472,9 +486,6 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             f"Laddning startad/återupptagen ({reason})",
                         )
                         self.session_start_time_utc = dt_util.utcnow()
-                    # Om en session redan pågick (t.ex. P/T och nu byter till Sol eller vice versa),
-                    # och det är en *annan* anledning än tidigare, kan man överväga att logga byte av anledning.
-                    # Men _reset_session_data anropas redan från _async_update_data vid byte av smart läge.
 
                 elif charger_status == EASEE_STATUS_CHARGING:
                     _LOGGER.debug(
@@ -511,10 +522,14 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         reason,
                         charger_status,
                     )
+                    # -- KORRIGERING 2 av 2: Använder 'action_command' med 'pause' för att stoppa.
                     await self.hass.services.async_call(
                         "easee",
-                        EASEE_SERVICE_PAUSE_CHARGING,
-                        {"charger_id": self.config.get(CONF_CHARGER_DEVICE)},
+                        "action_command",
+                        {
+                            "device_id": self.config.get(CONF_CHARGER_DEVICE),
+                            "action_command": "pause",
+                        },
                         blocking=False,
                     )
                     if self.session_start_time_utc is not None:
@@ -688,15 +703,51 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._solar_surplus_start_time = None
             self._solar_session_active = False
             self._price_time_eligible_for_charging = False
-        elif not self.charger_main_switch_state:
+
+        elif not self.charger_main_switch_state:  # Om huvudströmbrytaren är AV
+            # Kontrollera om en smart session var aktiv precis innan detta
+            # Notera: self.active_control_mode_internal har ännu inte satts till CONTROL_MODE_MANUAL för denna cykel
+            # så vi kan använda dess tidigare värde för att se om en smart session var igång.
+            # Eller, mer robust, kolla om self.session_start_time_utc var satt, vilket indikerar en aktiv session.
+
+            charger_main_switch_entity_id = self.config.get(
+                CONF_CHARGER_ENABLED_SWITCH_ID
+            )  # Hämta ID för loggning
+
+            # Om en session pågick (indikerat av session_start_time_utc) OCH
+            # det inte redan var manuellt läge (vilket det inte borde vara om en session pågick)
+            if (
+                self.session_start_time_utc is not None
+                and self.active_control_mode != CONTROL_MODE_MANUAL
+            ):
+                _LOGGER.info(  # Testet förväntar sig INFO-nivå
+                    "Huvudströmbrytaren %s stängdes av under en aktiv smart laddning. Återgår till manuellt läge.",
+                    charger_main_switch_entity_id or "Okänd huvudströmbrytare",
+                )
+
             self.active_control_mode_internal = CONTROL_MODE_MANUAL
             self.should_charge_flag = False
             reason_for_action = "Huvudströmbrytare för laddbox är AV."
-            if self.session_start_time_utc is not None:
-                self._reset_session_data(reason_for_action)
+
+            if (
+                self.session_start_time_utc is not None
+            ):  # Om en session var aktiv, återställ den
+                self._reset_session_data(
+                    reason_for_action
+                )  # Denna loggar "Återställer sessionsdata..."
+
             self._solar_surplus_start_time = None
             self._solar_session_active = False
             self._price_time_eligible_for_charging = False
+        # elif not self.charger_main_switch_state:
+        #     self.active_control_mode_internal = CONTROL_MODE_MANUAL
+        #     self.should_charge_flag = False
+        #     reason_for_action = "Huvudströmbrytare för laddbox är AV."
+        #     if self.session_start_time_utc is not None:
+        #         self._reset_session_data(reason_for_action)
+        #     self._solar_surplus_start_time = None
+        #     self._solar_session_active = False
+        #     self._price_time_eligible_for_charging = False
         elif (
             current_soc_percent is not None
             and target_soc_limit is not None
