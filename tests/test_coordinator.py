@@ -1,21 +1,25 @@
-"""Tester för SmartEVChargingCoordinator."""
+#
+# tests/test_coordinator.py
+#
+"""Testfil för grundläggande funktioner i SmartEVChargingCoordinator."""
 
+from datetime import timedelta, datetime, timezone
 import pytest
 import logging
 import random
 from unittest.mock import patch
-from datetime import datetime, timedelta, timezone
 from typing import Set
-
-from homeassistant.core import HomeAssistant
-from homeassistant.const import STATE_ON, STATE_OFF, STATE_UNAVAILABLE
-from homeassistant.config_entries import ConfigEntryState
 
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
-    async_mock_service,
     async_fire_time_changed,
+    async_mock_service,
 )
+
+from homeassistant.core import HomeAssistant
+from homeassistant.const import STATE_ON, STATE_OFF, STATE_UNAVAILABLE
+import homeassistant.util.dt as dt_util
+from freezegun.api import FrozenDateTimeFactory
 
 from custom_components.smart_ev_charging.const import (
     DOMAIN,
@@ -24,376 +28,370 @@ from custom_components.smart_ev_charging.const import (
     CONF_CHARGER_ENABLED_SWITCH_ID,
     CONF_PRICE_SENSOR,
     CONF_TIME_SCHEDULE_ENTITY,
-    EASEE_SERVICE_RESUME_CHARGING,
-    EASEE_SERVICE_SET_DYNAMIC_CURRENT,
     CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR,
+    CONF_CHARGER_DYNAMIC_CURRENT_SENSOR,
+    CONF_DEBUG_LOGGING,
     CONF_EV_SOC_SENSOR,
     CONF_TARGET_SOC_LIMIT,
-    CONF_DEBUG_LOGGING,
-    EASEE_SERVICE_PAUSE_CHARGING,
-    CONF_CHARGER_DYNAMIC_CURRENT_SENSOR,  # Säkerställ att denna är med
+    EASEE_STATUS_AWAITING_START,
+    EASEE_STATUS_CHARGING,
+    EASEE_STATUS_PAUSED,
+    EASEE_STATUS_READY_TO_CHARGE,
+    EASEE_SERVICE_SET_DYNAMIC_CURRENT,
+    # REASON_SOC_LIMIT_REACHED, # Borttagen, används som sträng
+    ENTITY_ID_SUFFIX_SMART_ENABLE_SWITCH,
+    ENTITY_ID_SUFFIX_MAX_PRICE_NUMBER,
+    ENTITY_ID_SUFFIX_ENABLE_SOLAR_CHARGING_SWITCH,
     ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER,
     ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER,
 )
 from custom_components.smart_ev_charging.coordinator import SmartEVChargingCoordinator
 
+# Lokalt definierade mock-konstanter för denna fil
+MOCK_PRICE_SENSOR_ID = "sensor.test_price_coordinator"
+MOCK_SCHEDULE_ID = "schedule.test_charging_schedule_coordinator"
+MOCK_STATUS_SENSOR_ID = "sensor.test_charger_status_coordinator"
+MOCK_MAIN_POWER_SWITCH_ID = "switch.mock_charger_power_coordinator"
+MOCK_SOC_SENSOR_ID = "sensor.test_ev_soc_coordinator"
+MOCK_SOC_LIMIT_INPUT_NUMBER_ID = "input_number.test_soc_limit_coordinator"
 
-async def test_price_time_charging_starts_when_conditions_are_met(hass: HomeAssistant):
-    """
-    Testar att koordinatorn startar laddning via Pris/Tid-läget från stillestånd.
 
-    SYFTE:
-        Att verifiera att koordinatorns beslutslogik korrekt initierar en
-        laddningssession när alla villkor för Pris/Tid-styrning är uppfyllda.
-
-    FÖRUTSÄTTNINGAR (Arrange):
-        - En ConfigEntry har skapats med alla nödvändiga sensorer konfigurerade.
-        - Debug-loggning är aktiverat i konfigurationen.
-        - Laddarens status är 'ready_to_charge' (redo men laddar inte).
-        - Elpriset är lågt (0.5 kr/kWh).
-        - Tidsschemat för laddning är PÅ.
-        - Switchen för "Smart Laddning" är PÅ.
-        - Maxpriset är satt till 1.0 kr/kWh (högre än det nuvarande priset).
-        - Solenergiladdning är AV.
-
-    UTFÖRANDE (Act):
-        - En uppdatering av koordinatorn triggas manuellt via `async_refresh`.
-
-    FÖRVÄNTAT RESULTAT (Assert):
-        - Tjänsten `set_dynamic_charger_circuit_current` anropas för att sätta max ström.
-        - Tjänsten `resume_charging` anropas för att starta laddningen.
-        - Koordinatorns aktiva styrningsläge (`active_control_mode`) blir "PRIS_TID".
-    """
-    # 1. ARRANGE
+@pytest.fixture
+async def setup_coordinator(hass: HomeAssistant):
+    """Grundläggande setup för koordinator-tester."""
+    entry_id = "test_coordinator_fixture_1"
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
-            CONF_CHARGER_DEVICE: "easee_123",
-            CONF_STATUS_SENSOR: "sensor.easee_status",
-            CONF_CHARGER_ENABLED_SWITCH_ID: "switch.easee_power",
-            CONF_PRICE_SENSOR: "sensor.nordpool_price",
-            CONF_TIME_SCHEDULE_ENTITY: "schedule.charging_time",
-            CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR: "sensor.charger_max_current",
-            CONF_DEBUG_LOGGING: True,
-            CONF_CHARGER_DYNAMIC_CURRENT_SENSOR: "sensor.current_dynamic_limit_ignored",  # Behövs för optimering, men testar start här
-        },
-        entry_id="test_coordinator_entry_1",
-    )
-    entry.add_to_hass(hass)
-
-    with patch(
-        "custom_components.smart_ev_charging.coordinator.SmartEVChargingCoordinator._setup_listeners"
-    ):
-        coordinator = SmartEVChargingCoordinator(hass, entry, 30)
-        coordinator._internal_entities_resolved = True
-        coordinator.smart_enable_switch_entity_id = (
-            "switch.avancerad_elbilsladdning_smart_laddning_aktiv"
-        )
-        coordinator.max_price_entity_id = "number.avancerad_elbilsladdning_max_elpris"
-        coordinator.solar_enable_switch_entity_id = (
-            "switch.avancerad_elbilsladdning_aktivera_solenergiladdning"
-        )
-        coordinator.solar_buffer_entity_id = (
-            f"number.avancerad_elbilsladdning_{ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER}"
-        )
-        coordinator.min_solar_charge_current_entity_id = f"number.avancerad_elbilsladdning_{ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER}"
-
-        hass.states.async_set("sensor.easee_status", "ready_to_charge")
-        hass.states.async_set("switch.easee_power", STATE_ON)
-        hass.states.async_set("sensor.nordpool_price", "0.5")
-        hass.states.async_set("schedule.charging_time", STATE_ON)
-        hass.states.async_set("sensor.charger_max_current", "16")
-        hass.states.async_set(coordinator.smart_enable_switch_entity_id, STATE_ON)
-        hass.states.async_set(coordinator.max_price_entity_id, "1.0")
-        hass.states.async_set(
-            coordinator.solar_enable_switch_entity_id, STATE_OFF
-        )  # Viktigt för detta test
-
-        resume_calls = async_mock_service(hass, "easee", EASEE_SERVICE_RESUME_CHARGING)
-        set_current_calls = async_mock_service(
-            hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
-        )
-
-        # 2. ACT
-        await coordinator.async_refresh()
-        await hass.async_block_till_done()
-
-        # 3. ASSERT
-        assert len(resume_calls) == 1
-        assert len(set_current_calls) == 1
-        assert coordinator.active_control_mode == "PRIS_TID"
-
-
-async def test_price_time_charging_does_not_call_set_current_unnecessarily(
-    hass: HomeAssistant,
-):
-    """
-    Testar att koordinatorn INTE gör onödiga anrop för Pris/Tid-läget.
-
-    SYFTE:
-        Att specifikt testa optimeringslogiken för Pris/Tid-läget. Testet verifierar
-        att `set_dynamic_charger_circuit_current` INTE anropas om laddning redan
-        pågår och den aktiva dynamiska strömgränsen redan är lika med målvärdet.
-        OBS: Detta test är designat för att misslyckas tills optimeringen är
-        implementerad i `coordinator.py`.
-
-    FÖRUTSÄTTNINGAR (Arrange):
-        - Solenergiladdning är explicit satt till AV för att isolera testet.
-        - Alla villkor för Pris/Tid-laddning är uppfyllda (lågt pris, schema PÅ etc.).
-        - Laddarens status är 'charging' (laddning pågår).
-        - En simulerad sensor för den *nuvarande dynamiska gränsen* (CONF_CHARGER_DYNAMIC_CURRENT_SENSOR) är satt till 16A.
-        - Koordinatorns målvärde för ström (från CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR) är också 16A.
-
-    UTFÖRANDE (Act):
-        - En uppdatering av koordinatorn triggas.
-
-    FÖRVÄNTAT RESULTAT (Assert):
-        - Tjänsten `set_dynamic_charger_circuit_current` ska INTE anropas.
-    """
-    # 1. ARRANGE
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_CHARGER_DEVICE: "easee_123",
-            CONF_STATUS_SENSOR: "sensor.easee_status",
-            CONF_CHARGER_ENABLED_SWITCH_ID: "switch.easee_power",
-            CONF_PRICE_SENSOR: "sensor.nordpool_price",
-            CONF_TIME_SCHEDULE_ENTITY: "schedule.charging_time",
-            CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR: "sensor.charger_max_current",  # Mål är 16A
-            CONF_CHARGER_DYNAMIC_CURRENT_SENSOR: "sensor.current_dynamic_limit",  # Nuvarande är 16A
-            CONF_DEBUG_LOGGING: True,
-        },
-        entry_id="test_coordinator_entry_2",
-    )
-    entry.add_to_hass(hass)
-
-    with patch(
-        "custom_components.smart_ev_charging.coordinator.SmartEVChargingCoordinator._setup_listeners"
-    ):
-        coordinator = SmartEVChargingCoordinator(hass, entry, 30)
-        coordinator._internal_entities_resolved = True
-        coordinator.smart_enable_switch_entity_id = (
-            "switch.avancerad_elbilsladdning_smart_laddning_aktiv"
-        )
-        coordinator.max_price_entity_id = "number.avancerad_elbilsladdning_max_elpris"
-        coordinator.solar_enable_switch_entity_id = (
-            "switch.avancerad_elbilsladdning_aktivera_solenergiladdning"
-        )
-        coordinator.solar_buffer_entity_id = (
-            f"number.avancerad_elbilsladdning_{ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER}"
-        )
-        coordinator.min_solar_charge_current_entity_id = f"number.avancerad_elbilsladdning_{ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER}"
-
-        hass.states.async_set("sensor.easee_status", "charging")
-        hass.states.async_set("switch.easee_power", STATE_ON)
-        hass.states.async_set("sensor.nordpool_price", "0.5")
-        hass.states.async_set("schedule.charging_time", STATE_ON)
-        hass.states.async_set("sensor.charger_max_current", "16")
-        hass.states.async_set(
-            "sensor.current_dynamic_limit", "16"
-        )  # Viktig för detta test
-        hass.states.async_set(coordinator.smart_enable_switch_entity_id, STATE_ON)
-        hass.states.async_set(coordinator.max_price_entity_id, "1.0")
-        hass.states.async_set(coordinator.solar_enable_switch_entity_id, STATE_OFF)
-
-        resume_calls = async_mock_service(hass, "easee", EASEE_SERVICE_RESUME_CHARGING)
-        set_current_calls = async_mock_service(
-            hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
-        )
-
-        # 2. ACT
-        await coordinator.async_refresh()
-        await hass.async_block_till_done()
-
-        # 3. ASSERT
-        assert len(set_current_calls) == 0
-        assert len(resume_calls) == 0
-
-
-async def test_charging_stops_when_soc_limit_is_reached(hass: HomeAssistant, caplog):
-    """
-    Testar att laddning pausas och ett meddelande loggas när SoC-gränsen nås.
-    ... (docstring) ...
-    """
-    # 1. ARRANGE
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_CHARGER_DEVICE: "easee_123",
-            CONF_STATUS_SENSOR: "sensor.easee_status",
-            CONF_EV_SOC_SENSOR: "sensor.ev_soc",
-            CONF_TARGET_SOC_LIMIT: 89.0,
-            CONF_DEBUG_LOGGING: True,
-            CONF_CHARGER_ENABLED_SWITCH_ID: "switch.easee_power",
-            CONF_CHARGER_DYNAMIC_CURRENT_SENSOR: "sensor.current_dynamic_limit_ignored",
-        },
-        entry_id="test_coordinator_entry_3",
-    )
-    entry.add_to_hass(hass)
-
-    with patch(
-        "custom_components.smart_ev_charging.coordinator.SmartEVChargingCoordinator._setup_listeners"
-    ):
-        coordinator = SmartEVChargingCoordinator(hass, entry, 30)
-        coordinator._internal_entities_resolved = True
-        coordinator.smart_enable_switch_entity_id = (
-            "switch.avancerad_elbilsladdning_smart_laddning_aktiv"
-        )
-        coordinator.max_price_entity_id = "number.avancerad_elbilsladdning_max_elpris"
-        coordinator.solar_enable_switch_entity_id = (
-            "switch.avancerad_elbilsladdning_aktivera_solenergiladdning"
-        )
-        coordinator.solar_buffer_entity_id = (
-            f"number.avancerad_elbilsladdning_{ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER}"
-        )
-        coordinator.min_solar_charge_current_entity_id = f"number.avancerad_elbilsladdning_{ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER}"
-
-        hass.states.async_set("sensor.easee_status", "charging")
-        hass.states.async_set("sensor.ev_soc", "90.0")
-        hass.states.async_set("switch.easee_power", STATE_ON)
-        hass.states.async_set(
-            coordinator.smart_enable_switch_entity_id, STATE_ON
-        )  # Kan vara PÅ
-        hass.states.async_set(
-            coordinator.solar_enable_switch_entity_id, STATE_OFF
-        )  # Eller PÅ
-
-        pause_calls = async_mock_service(hass, "easee", EASEE_SERVICE_PAUSE_CHARGING)
-
-        # 2. ACT
-        caplog.set_level(logging.INFO)
-        await coordinator.async_refresh()
-        await hass.async_block_till_done()
-
-        # 3. ASSERT
-        assert len(pause_calls) == 1
-        assert "SoC (90.0%) har nått målet (89.0%)" in caplog.text
-
-
-async def test_full_day_price_time_simulation(hass: HomeAssistant):
-    """
-    Testar Pris/Tid-logiken genom att simulera ett helt dygn, timme för timme.
-    ... (docstring) ...
-    """
-    # 1. ARRANGE
-    max_price = random.uniform(0.2, 0.8)
-    active_schedule_hours: Set[int] = set(random.sample(range(24), 12))
-    hourly_spot_prices = {hour: random.uniform(0.0, 1.0) for hour in range(24)}
-
-    print(f"\n--- Test-setup ---")
-    print(f"Slumpat maxpris: {max_price:.2f} kr")
-    print(f"Timmar med aktivt schema: {sorted(list(active_schedule_hours))}")
-
-    MOCK_SCHEDULE_ID = "schedule.test_laddningsschema"
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_CHARGER_DEVICE: "easee_123",
-            CONF_STATUS_SENSOR: "sensor.easee_status",
-            CONF_CHARGER_ENABLED_SWITCH_ID: "switch.easee_power",
-            CONF_PRICE_SENSOR: "sensor.nordpool_price",
+            CONF_CHARGER_DEVICE: "easee_123_coord_test",
+            CONF_STATUS_SENSOR: MOCK_STATUS_SENSOR_ID,
+            CONF_CHARGER_ENABLED_SWITCH_ID: MOCK_MAIN_POWER_SWITCH_ID,
+            CONF_PRICE_SENSOR: MOCK_PRICE_SENSOR_ID,
             CONF_TIME_SCHEDULE_ENTITY: MOCK_SCHEDULE_ID,
+            CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR: "sensor.charger_max_current_coord_test",
+            CONF_CHARGER_DYNAMIC_CURRENT_SENSOR: "sensor.dynamic_current_coord_test",
             CONF_DEBUG_LOGGING: True,
-            CONF_CHARGER_DYNAMIC_CURRENT_SENSOR: "sensor.current_dynamic_limit_ignored",
         },
-        entry_id="test_full_day_sim",
+        entry_id=entry_id,
     )
     entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.smart_ev_charging.coordinator.SmartEVChargingCoordinator._setup_listeners"
-    ):
-        coordinator = SmartEVChargingCoordinator(hass, entry, 30)
-        coordinator._internal_entities_resolved = True
-        coordinator.smart_enable_switch_entity_id = (
-            "switch.avancerad_elbilsladdning_smart_laddning_aktiv"
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    coordinator.smart_enable_switch_entity_id = (
+        f"switch.{DOMAIN}_{entry_id}_{ENTITY_ID_SUFFIX_SMART_ENABLE_SWITCH}"
+    )
+    coordinator.max_price_entity_id = (
+        f"number.{DOMAIN}_{entry_id}_{ENTITY_ID_SUFFIX_MAX_PRICE_NUMBER}"
+    )
+    coordinator.solar_enable_switch_entity_id = (
+        f"switch.{DOMAIN}_{entry_id}_{ENTITY_ID_SUFFIX_ENABLE_SOLAR_CHARGING_SWITCH}"
+    )
+    coordinator.solar_buffer_entity_id = (
+        f"number.{DOMAIN}_{entry_id}_{ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER}"
+    )
+    coordinator.min_solar_charge_current_entity_id = f"number.{DOMAIN}_{entry_id}_{ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER}"
+    coordinator._internal_entities_resolved = True
+
+    hass.states.async_set(coordinator.smart_enable_switch_entity_id, STATE_ON)
+    hass.states.async_set(coordinator.max_price_entity_id, "1.0")
+    hass.states.async_set(coordinator.solar_enable_switch_entity_id, STATE_OFF)
+    hass.states.async_set("sensor.charger_max_current_coord_test", "16")
+    return coordinator
+
+
+@pytest.fixture
+async def setup_coordinator_with_soc(hass: HomeAssistant):
+    """Setup för koordinator-tester som inkluderar SoC-hantering."""
+    entry_id = "test_coordinator_fixture_soc"
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CHARGER_DEVICE: "easee_456_soc_test",
+            CONF_STATUS_SENSOR: MOCK_STATUS_SENSOR_ID,
+            CONF_CHARGER_ENABLED_SWITCH_ID: MOCK_MAIN_POWER_SWITCH_ID,
+            CONF_PRICE_SENSOR: MOCK_PRICE_SENSOR_ID,
+            CONF_TIME_SCHEDULE_ENTITY: MOCK_SCHEDULE_ID,
+            CONF_EV_SOC_SENSOR: MOCK_SOC_SENSOR_ID,
+            CONF_TARGET_SOC_LIMIT: 80.0,
+            CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR: "sensor.charger_max_current_soc_test",
+            CONF_CHARGER_DYNAMIC_CURRENT_SENSOR: "sensor.dynamic_current_soc_test",
+            CONF_DEBUG_LOGGING: True,
+        },
+        entry_id=entry_id,
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    coordinator.smart_enable_switch_entity_id = (
+        f"switch.{DOMAIN}_{entry_id}_{ENTITY_ID_SUFFIX_SMART_ENABLE_SWITCH}"
+    )
+    coordinator.max_price_entity_id = (
+        f"number.{DOMAIN}_{entry_id}_{ENTITY_ID_SUFFIX_MAX_PRICE_NUMBER}"
+    )
+    coordinator.solar_enable_switch_entity_id = (
+        f"switch.{DOMAIN}_{entry_id}_{ENTITY_ID_SUFFIX_ENABLE_SOLAR_CHARGING_SWITCH}"
+    )
+    coordinator.solar_buffer_entity_id = (
+        f"number.{DOMAIN}_{entry_id}_{ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER}"
+    )
+    coordinator.min_solar_charge_current_entity_id = f"number.{DOMAIN}_{entry_id}_{ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER}"
+    coordinator._internal_entities_resolved = True
+
+    hass.states.async_set(coordinator.smart_enable_switch_entity_id, STATE_ON)
+    hass.states.async_set(
+        coordinator.max_price_entity_id, "1.0"
+    )  # Maxpris satt i fixturen
+    hass.states.async_set(coordinator.solar_enable_switch_entity_id, STATE_OFF)
+    hass.states.async_set("sensor.charger_max_current_soc_test", "16")
+    return coordinator
+
+
+@pytest.mark.asyncio
+async def test_price_time_charging_starts_when_conditions_are_met(
+    hass: HomeAssistant, setup_coordinator: SmartEVChargingCoordinator
+):
+    """Testar att laddning startar när pris och tidsschema är uppfyllda."""
+    coordinator = setup_coordinator
+
+    action_command_calls = async_mock_service(hass, "easee", "action_command")
+    set_current_calls = async_mock_service(
+        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    )
+
+    hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.5")
+    hass.states.async_set(MOCK_SCHEDULE_ID, STATE_ON)
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_AWAITING_START)
+    hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_ON)
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert len(action_command_calls) == 1, (
+        "Tjänsten för att starta laddning anropades inte."
+    )
+    assert action_command_calls[0].data["action_command"] == "resume"
+    assert len(set_current_calls) == 1, "Tjänsten för att sätta ström anropades inte."
+
+
+@pytest.mark.asyncio
+async def test_charging_stops_when_price_is_too_high(
+    hass: HomeAssistant, setup_coordinator: SmartEVChargingCoordinator
+):
+    """Testar att laddning stoppas när elpriset överstiger maxgränsen."""
+    coordinator = setup_coordinator
+    action_command_calls = async_mock_service(hass, "easee", "action_command")
+    set_current_calls = async_mock_service(
+        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    )
+
+    hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.5")
+    hass.states.async_set(MOCK_SCHEDULE_ID, STATE_ON)
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_AWAITING_START)
+    hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_ON)
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
+
+    assert len(action_command_calls) == 1
+    assert action_command_calls[0].data["action_command"] == "resume"
+    assert len(set_current_calls) == 1
+
+    action_command_calls.clear()
+    set_current_calls.clear()
+
+    hass.states.async_set(
+        MOCK_PRICE_SENSOR_ID, "2.0"
+    )  # Pris över maxgräns (1.0 från fixture)
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert len(action_command_calls) == 1, (
+        "Tjänsten för att pausa laddning anropades inte eller fel antal gånger."
+    )
+    assert action_command_calls[0].data["action_command"] == "pause"
+    assert len(set_current_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_charging_stops_when_schedule_is_off(
+    hass: HomeAssistant, setup_coordinator: SmartEVChargingCoordinator
+):
+    """Testar att laddning stoppas när tidsschemat stängs av."""
+    coordinator = setup_coordinator
+    action_command_calls = async_mock_service(hass, "easee", "action_command")
+    set_current_calls = async_mock_service(
+        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    )
+
+    hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.5")
+    hass.states.async_set(MOCK_SCHEDULE_ID, STATE_ON)
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_AWAITING_START)
+    hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_ON)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
+    assert len(action_command_calls) == 1
+    assert action_command_calls[0].data["action_command"] == "resume"
+    assert len(set_current_calls) == 1
+
+    action_command_calls.clear()
+    set_current_calls.clear()
+
+    hass.states.async_set(MOCK_SCHEDULE_ID, STATE_OFF)
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert len(action_command_calls) == 1
+    assert action_command_calls[0].data["action_command"] == "pause"
+    assert len(set_current_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_charging_stops_when_soc_limit_is_reached(
+    hass: HomeAssistant, setup_coordinator_with_soc: SmartEVChargingCoordinator
+):
+    """Testar att laddning stoppas när SOC-gränsen uppnås."""
+    coordinator = setup_coordinator_with_soc
+    action_command_calls = async_mock_service(hass, "easee", "action_command")
+    set_current_calls = async_mock_service(
+        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    )
+
+    # ARRANGE - Steg 1: Starta laddning, SOC är under gränsen
+    hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.5")  # Lågt pris
+    hass.states.async_set(
+        MOCK_SCHEDULE_ID, STATE_ON
+    )  # Schema PÅ (från fixturens config, men vi sätter här för tydlighet)
+    hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_ON)
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_AWAITING_START)
+    hass.states.async_set(
+        MOCK_SOC_SENSOR_ID, "70.0"
+    )  # SoC under gränsen (80.0 från fixture)
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
+
+    assert len(action_command_calls) == 1
+    assert action_command_calls[0].data["action_command"] == "resume"
+    assert len(set_current_calls) == 1
+
+    # Förväntad anledning när laddning startar (baserat på Pris/Tid)
+    # Antag att surcharge är 0 och max_price är 1.0 från fixturen
+    # Priset är 0.5, schemat är PÅ.
+    expected_initial_reason = (
+        "Pris/Tid-laddning aktiv (Pris: 0.50 <= 1.00 kr, Tidsschema PÅ)."
+    )
+    actual_initial_reason = coordinator.data.get("should_charge_reason", "")
+    assert actual_initial_reason == expected_initial_reason, (
+        f"Förväntad anledning '{expected_initial_reason}', fick '{actual_initial_reason}'"
+    )
+
+    # Rensa anrop för nästa steg
+    action_command_calls.clear()
+    set_current_calls.clear()
+
+    # ARRANGE - Steg 2: SOC når gränsen
+    hass.states.async_set(MOCK_SOC_SENSOR_ID, "81.0")
+
+    # ACT
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    # ASSERT
+    assert len(action_command_calls) == 1, (
+        "Paus-tjänsten anropades inte eller fel antal gånger när SOC-gränsen nåddes."
+    )
+    assert action_command_calls[0].data["action_command"] == "pause"
+    assert (
+        len(set_current_calls) == 0
+    )  # Ska inte försöka sätta ström när den pausar pga SoC
+
+    expected_soc_reason = "SoC (81.0%) har nått målet (80.0%)."  # Baserat på fixturens CONF_TARGET_SOC_LIMIT = 80.0
+    actual_soc_reason = coordinator.data.get("should_charge_reason", "")
+    assert actual_soc_reason == expected_soc_reason, (
+        f"Förväntad SoC-anledning '{expected_soc_reason}', fick '{actual_soc_reason}'"
+    )
+
+
+@pytest.mark.asyncio
+async def test_full_day_price_time_simulation(
+    hass: HomeAssistant,
+    setup_coordinator: SmartEVChargingCoordinator,
+    freezer: FrozenDateTimeFactory,
+):
+    """Simulerar en hel dag och verifierar att laddningen startar och stoppar vid rätt tidpunkter baserat på pris och schema."""
+    coordinator = setup_coordinator
+    action_command_calls = async_mock_service(hass, "easee", "action_command")
+    set_current_calls = async_mock_service(
+        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    )
+
+    prices = [2.0] * 3 + [0.5] * 3 + [2.0] * 2 + [2.0] * 15 + [0.5] * 1
+    schedule_states = [STATE_ON] * 6 + [STATE_OFF] * 2 + [STATE_ON] * 16
+
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_READY_TO_CHARGE)
+    hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_ON)
+
+    start_time = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    freezer.move_to(start_time)
+
+    max_price_state = hass.states.get(coordinator.max_price_entity_id)
+    assert max_price_state is not None
+    max_price_from_entity = float(max_price_state.state)
+
+    for hour in range(24):
+        current_time = start_time + timedelta(hours=hour)
+        freezer.move_to(current_time)
+
+        hass.states.async_set(MOCK_PRICE_SENSOR_ID, str(prices[hour]))
+        hass.states.async_set(MOCK_SCHEDULE_ID, schedule_states[hour])
+
+        if (
+            coordinator.should_charge_flag
+        ):  # Använd koordinatorns flagga från föregående iteration
+            hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
+        else:
+            hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_PAUSED)
+
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+        should_be_charging_this_hour = (
+            prices[hour] <= max_price_from_entity and schedule_states[hour] == STATE_ON
         )
-        coordinator.max_price_entity_id = "number.avancerad_elbilsladdning_max_elpris"
-        coordinator.solar_enable_switch_entity_id = (
-            "switch.avancerad_elbilsladdning_aktivera_solenergiladdning"
+
+        assert coordinator.should_charge_flag == should_be_charging_this_hour, (
+            f"Fel timme {hour}: Förväntade should_charge={should_be_charging_this_hour}, fick {coordinator.should_charge_flag}. "
+            f"Pris: {prices[hour]}, Maxpris: {max_price_from_entity}, Schema: {schedule_states[hour]}"
         )
-        coordinator.solar_buffer_entity_id = (
-            f"number.avancerad_elbilsladdning_{ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER}"
+
+    num_resume_expected = 0
+    num_pause_expected = 0
+    currently_charging_sim = False
+
+    for hour in range(24):
+        should_charge_now = (
+            prices[hour] <= max_price_from_entity and schedule_states[hour] == STATE_ON
         )
-        coordinator.min_solar_charge_current_entity_id = f"number.avancerad_elbilsladdning_{ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER}"
+        if should_charge_now and not currently_charging_sim:
+            num_resume_expected += 1
+            currently_charging_sim = True
+        elif not should_charge_now and currently_charging_sim:
+            num_pause_expected += 1
+            currently_charging_sim = False
 
-        hass.states.async_set(coordinator.smart_enable_switch_entity_id, STATE_ON)
-        hass.states.async_set(coordinator.max_price_entity_id, f"{max_price:.2f}")
-        hass.states.async_set(coordinator.solar_enable_switch_entity_id, STATE_OFF)
+    total_expected_calls = num_resume_expected + num_pause_expected
 
-        hass.states.async_set("sensor.easee_status", "ready_to_charge")
-        hass.states.async_set("switch.easee_power", STATE_ON)
-
-        resume_calls = async_mock_service(hass, "easee", EASEE_SERVICE_RESUME_CHARGING)
-        pause_calls = async_mock_service(hass, "easee", EASEE_SERVICE_PAUSE_CHARGING)
-        async_mock_service(hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT)
-
-        # 2. ACT & ASSERT
-        start_of_day = datetime(2025, 5, 30, 0, 0, 0, tzinfo=timezone.utc)
-        is_charging = False
-
-        for hour in range(24):
-            current_time = start_of_day + timedelta(hours=hour)
-
-            spot_price_this_hour = hourly_spot_prices[hour]
-            schedule_active_this_hour = hour in active_schedule_hours
-
-            schedule_state = STATE_ON if schedule_active_this_hour else STATE_OFF
-            hass.states.async_set(MOCK_SCHEDULE_ID, schedule_state)
-
-            hass.states.async_set(
-                "sensor.nordpool_price", f"{spot_price_this_hour:.2f}"
-            )
-
-            current_charger_status = "charging" if is_charging else "ready_to_charge"
-            hass.states.async_set("sensor.easee_status", current_charger_status)
-
-            async_fire_time_changed(hass, current_time)
-            await hass.async_block_till_done()
-
-            should_be_charging = schedule_active_this_hour and (
-                spot_price_this_hour <= max_price
-            )
-
-            resume_calls.clear()
-            pause_calls.clear()
-
-            await coordinator.async_refresh()
-            await hass.async_block_till_done()
-
-            if should_be_charging and not is_charging:
-                print(
-                    f"TIMME {hour:02d}: Pris {spot_price_this_hour:.2f} <= {max_price:.2f}, Schema PÅ. Förväntar START."
-                )
-                assert len(resume_calls) == 1, (
-                    f"Fel timme {hour}: Förväntade start av laddning."
-                )
-                assert len(pause_calls) == 0, (
-                    f"Fel timme {hour}: Förväntade start, men fick paus."
-                )
-                is_charging = True
-            elif not should_be_charging and is_charging:
-                reason = (
-                    "Pris för högt"
-                    if not (spot_price_this_hour <= max_price)
-                    else "Schema inaktivt"
-                )
-                print(f"TIMME {hour:02d}: {reason}. Förväntar STOPP.")
-                assert len(pause_calls) == 1, (
-                    f"Fel timme {hour}: Förväntade stopp av laddning."
-                )
-                assert len(resume_calls) == 0, (
-                    f"Fel timme {hour}: Förväntade stopp, men fick start."
-                )
-                is_charging = False
-            else:
-                status_text = "fortsatt laddning" if is_charging else "fortsatt pausad"
-                print(
-                    f"TIMME {hour:02d}: Pris {spot_price_this_hour:.2f}, Schema {'PÅ' if schedule_active_this_hour else 'AV'}. Förväntar {status_text}."
-                )
-                assert len(resume_calls) == 0, (
-                    f"Fel timme {hour}: Förväntade ingen ändring, men fick start."
-                )
-                assert len(pause_calls) == 0, (
-                    f"Fel timme {hour}: Förväntade ingen ändring, men fick paus."
-                )
+    assert len(action_command_calls) == total_expected_calls, (
+        f"Fel antal start/stopp-anrop. Fick {len(action_command_calls)}, förväntade {total_expected_calls}. ResumeExp: {num_resume_expected}, PauseExp: {num_pause_expected}. Anrop: {action_command_calls}"
+    )

@@ -1,48 +1,104 @@
+# tests/test_connection_override.py
 """Tester för anslutningssekvenser och åsidosättande av extern paus."""
 
 import pytest
 import logging
-from unittest.mock import patch
-from datetime import datetime, timedelta, timezone
-from typing import Set
+# from unittest.mock import patch # Tas bort om ej använd
+# from datetime import datetime, timedelta, timezone # Tas bort om ej använd
+# from typing import Set # Tas bort om ej använd
 
 from homeassistant.core import HomeAssistant
-from homeassistant.const import STATE_ON, STATE_OFF, STATE_UNAVAILABLE
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import STATE_ON, STATE_OFF, STATE_UNAVAILABLE # STATE_UNAVAILABLE används
+# from homeassistant.config_entries import ConfigEntryState # Tas bort om ej använd
 
 from pytest_homeassistant_custom_component.common import (
-    MockConfigEntry,
-    async_mock_service,
-    async_fire_time_changed,
+    MockConfigEntry, # Används
+    async_mock_service, # Används
+    # async_fire_time_changed, # Tas bort om ej använd
 )
 
 from custom_components.smart_ev_charging.const import (
     DOMAIN,
-    CONF_CHARGER_DEVICE,
-    CONF_STATUS_SENSOR,
+    CONF_CHARGER_DEVICE, # Korrekt importerad nu
+    CONF_STATUS_SENSOR, # Korrekt importerad nu
     CONF_CHARGER_ENABLED_SWITCH_ID,
     CONF_PRICE_SENSOR,
     CONF_TIME_SCHEDULE_ENTITY,
-    EASEE_SERVICE_RESUME_CHARGING,
-    EASEE_SERVICE_SET_DYNAMIC_CURRENT,
     CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR,
     CONF_DEBUG_LOGGING,
     CONF_CHARGER_DYNAMIC_CURRENT_SENSOR,
+    EASEE_SERVICE_SET_DYNAMIC_CURRENT,
+    EASEE_STATUS_DISCONNECTED,
+    EASEE_STATUS_AWAITING_START,
+    EASEE_STATUS_CHARGING,
     ENTITY_ID_SUFFIX_SMART_ENABLE_SWITCH,
     ENTITY_ID_SUFFIX_MAX_PRICE_NUMBER,
     ENTITY_ID_SUFFIX_ENABLE_SOLAR_CHARGING_SWITCH,
     ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER,
     ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER,
-    EASEE_STATUS_DISCONNECTED,
-    EASEE_STATUS_AWAITING_START,
-    EASEE_STATUS_READY_TO_CHARGE,
-    EASEE_STATUS_CHARGING,
-    EASEE_SERVICE_PAUSE_CHARGING,
+    CONTROL_MODE_PRICE_TIME,
+    CONTROL_MODE_MANUAL,
 )
 from custom_components.smart_ev_charging.coordinator import SmartEVChargingCoordinator
 
+# Lokalt definierade mock-konstanter för detta testfall
+MOCK_CHARGER_DEVICE_ID_CONN_OVERRIDE = "easee_123_conn_override" # Förtydligat namn för att undvika kollision
+MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE = "sensor.easee_status_conn_override"
+MOCK_PRICE_SENSOR_ID_CONN_OVERRIDE = "sensor.nordpool_price_conn_override"
+# MOCK_SCHEDULE_ID_CONN_OVERRIDE = "schedule.charging_time_conn_override" # Används inte då CONF_TIME_SCHEDULE_ENTITY är None
+MOCK_MAIN_POWER_SWITCH_ID_CONN_OVERRIDE = "switch.easee_power_conn_override"
+MOCK_MAX_CURRENT_SENSOR_ID_CONN_OVERRIDE = "sensor.charger_max_current_conn_override"
+DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE = "sensor.current_dynamic_limit_conn_override"
 
-async def test_charger_connection_sequence_and_pause_override(hass: HomeAssistant):
+
+@pytest.fixture
+async def setup_coordinator_conn_override(hass: HomeAssistant):
+    """Fixture för att sätta upp SmartEVChargingCoordinator för dessa specifika tester."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CHARGER_DEVICE: MOCK_CHARGER_DEVICE_ID_CONN_OVERRIDE,
+            CONF_STATUS_SENSOR: MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE,
+            CONF_CHARGER_ENABLED_SWITCH_ID: MOCK_MAIN_POWER_SWITCH_ID_CONN_OVERRIDE,
+            CONF_PRICE_SENSOR: MOCK_PRICE_SENSOR_ID_CONN_OVERRIDE,
+            CONF_TIME_SCHEDULE_ENTITY: None,
+            CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR: MOCK_MAX_CURRENT_SENSOR_ID_CONN_OVERRIDE,
+            CONF_DEBUG_LOGGING: True,
+            CONF_CHARGER_DYNAMIC_CURRENT_SENSOR: DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE,
+        },
+        entry_id="test_connection_sequence_v2", # Unikt entry_id
+    )
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator: SmartEVChargingCoordinator = hass.data[DOMAIN][entry.entry_id][
+        "coordinator"
+    ]
+    assert coordinator is not None
+
+    coordinator.smart_enable_switch_entity_id = (
+        f"switch.{DOMAIN}_{entry.entry_id}_{ENTITY_ID_SUFFIX_SMART_ENABLE_SWITCH}"
+    )
+    coordinator.max_price_entity_id = (
+        f"number.{DOMAIN}_{entry.entry_id}_{ENTITY_ID_SUFFIX_MAX_PRICE_NUMBER}"
+    )
+    coordinator.solar_enable_switch_entity_id = f"switch.{DOMAIN}_{entry.entry_id}_{ENTITY_ID_SUFFIX_ENABLE_SOLAR_CHARGING_SWITCH}"
+    coordinator.solar_buffer_entity_id = (
+        f"number.{DOMAIN}_{entry.entry_id}_{ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER}"
+    )
+    coordinator.min_solar_charge_current_entity_id = f"number.{DOMAIN}_{entry.entry_id}_{ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER}"
+    coordinator._internal_entities_resolved = True
+
+    hass.states.async_set(coordinator.smart_enable_switch_entity_id, STATE_ON)
+    hass.states.async_set(coordinator.max_price_entity_id, "0.50")
+    hass.states.async_set(coordinator.solar_enable_switch_entity_id, STATE_OFF)
+
+    return coordinator
+
+
+async def test_charger_connection_sequence_and_pause_override(hass: HomeAssistant, setup_coordinator_conn_override: SmartEVChargingCoordinator):
     """
     Testar en sekvens där bilen ansluts, laddning startar (Pris/Tid),
     laddning pågår, pausas externt (status ändras till awaiting_start),
@@ -63,119 +119,78 @@ async def test_charger_connection_sequence_and_pause_override(hass: HomeAssistan
 
     UTFÖRANDE (Act) & FÖRVÄNTAT RESULTAT (Assert) - Stegvis:
         1. INITIALT: 'disconnected'. -> Ingen laddning.
-        2. ANSLUTNING: 'awaiting_start'. -> Laddning SKA starta (resume och set_current).
+        2. ANSLUTNING: 'awaiting_start'. -> Laddning SKA starta (action_command "resume" och set_current).
         3. LADDNING PÅGÅR: Status sätts till 'charging'.
            -> Ingen ny START/STOPP. `set_current` ska INTE anropas (om optimering är på och ström är korrekt).
         4. EXTERN PAUS: Status ändras till 'awaiting_start' från 'charging'.
-           -> Koordinatorn ska omedelbart återuppta laddningen (resume).
+           -> Koordinatorn ska omedelbart återuppta laddningen (action_command "resume").
            -> `set_current` ska INTE anropas igen om den dynamiska gränsen antas vara oförändrad.
-    """  # noqa: D205, D212
-    # 1. ARRANGE
-    DYN_LIMIT_SENSOR_ID = "sensor.current_dynamic_limit_conn_seq"
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_CHARGER_DEVICE: "easee_123",
-            CONF_STATUS_SENSOR: "sensor.easee_status",
-            CONF_CHARGER_ENABLED_SWITCH_ID: "switch.easee_power",
-            CONF_PRICE_SENSOR: "sensor.nordpool_price",
-            CONF_TIME_SCHEDULE_ENTITY: None,
-            CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR: "sensor.charger_max_current",
-            CONF_DEBUG_LOGGING: True,
-            CONF_CHARGER_DYNAMIC_CURRENT_SENSOR: DYN_LIMIT_SENSOR_ID,
-        },
-        entry_id="test_connection_sequence",
+    """
+    coordinator = setup_coordinator_conn_override
+
+    hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID_CONN_OVERRIDE, STATE_ON)
+    hass.states.async_set(MOCK_PRICE_SENSOR_ID_CONN_OVERRIDE, "0.30")
+    hass.states.async_set(MOCK_MAX_CURRENT_SENSOR_ID_CONN_OVERRIDE, "16")
+
+    action_command_calls = async_mock_service(hass, "easee", "action_command")
+    set_current_calls = async_mock_service(
+        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
     )
-    entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.smart_ev_charging.coordinator.SmartEVChargingCoordinator._setup_listeners"
-    ):
-        coordinator = SmartEVChargingCoordinator(hass, entry, 30)
-        coordinator._internal_entities_resolved = True
-        coordinator.smart_enable_switch_entity_id = (
-            f"switch.{DOMAIN}_{entry.entry_id}_{ENTITY_ID_SUFFIX_SMART_ENABLE_SWITCH}"
-        )
-        coordinator.max_price_entity_id = (
-            f"number.{DOMAIN}_{entry.entry_id}_{ENTITY_ID_SUFFIX_MAX_PRICE_NUMBER}"
-        )
-        coordinator.solar_enable_switch_entity_id = f"switch.{DOMAIN}_{entry.entry_id}_{ENTITY_ID_SUFFIX_ENABLE_SOLAR_CHARGING_SWITCH}"
-        coordinator.solar_buffer_entity_id = (
-            f"number.{DOMAIN}_{entry.entry_id}_{ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER}"
-        )
-        coordinator.min_solar_charge_current_entity_id = f"number.{DOMAIN}_{entry.entry_id}_{ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER}"
+    # Steg 1: Bilen är frånkopplad
+    print("TESTSTEG 1: Disconnected")
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_DISCONNECTED[0])
+    hass.states.async_set(DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE, STATE_UNAVAILABLE)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert len(action_command_calls) == 0
+    assert len(set_current_calls) == 0
+    assert coordinator.active_control_mode == CONTROL_MODE_MANUAL
 
-        hass.states.async_set("switch.easee_power", STATE_ON)
-        hass.states.async_set("sensor.nordpool_price", "0.30")
-        hass.states.async_set("sensor.charger_max_current", "16")
-        hass.states.async_set(coordinator.smart_enable_switch_entity_id, STATE_ON)
-        hass.states.async_set(coordinator.max_price_entity_id, "0.50")
-        hass.states.async_set(coordinator.solar_enable_switch_entity_id, STATE_OFF)
+    # Steg 2: Bilen ansluts, status -> awaiting_start. Laddning ska starta.
+    print("TESTSTEG 2: Awaiting Start - Förväntar START")
+    action_command_calls.clear()
+    set_current_calls.clear()
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_AWAITING_START)
+    hass.states.async_set(DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE, STATE_UNAVAILABLE)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert len(action_command_calls) == 1, "Laddning startade inte vid awaiting_start"
+    assert action_command_calls[0].data["action_command"] == "resume"
+    assert len(set_current_calls) == 1, "Ström sattes inte vid awaiting_start"
+    assert coordinator.active_control_mode == CONTROL_MODE_PRICE_TIME
 
-        resume_calls = async_mock_service(hass, "easee", EASEE_SERVICE_RESUME_CHARGING)
-        pause_calls = async_mock_service(hass, "easee", EASEE_SERVICE_PAUSE_CHARGING)
-        set_current_calls = async_mock_service(
-            hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
-        )
+    # Steg 3: Simulera att laddaren nu faktiskt laddar.
+    print("TESTSTEG 3: Charging (efter start) - Förväntar ingen ny åtgärd")
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_CHARGING)
+    hass.states.async_set(
+        DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE, "16.0"
+    )
+    action_command_calls.clear()
+    set_current_calls.clear()
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert len(action_command_calls) == 0, "Onödigt action_command när laddning redan pågår"
+    assert len(set_current_calls) == 0, (
+        "Onödigt set_current när laddning redan pågår med rätt ström"
+    )
+    assert coordinator.active_control_mode == CONTROL_MODE_PRICE_TIME
 
-        # 2. ACT & ASSERT - STEG FÖR STEG
-
-        # Steg 1: Bilen är frånkopplad
-        print("TESTSTEG 1: Disconnected")
-        hass.states.async_set("sensor.easee_status", EASEE_STATUS_DISCONNECTED[0])
-        hass.states.async_set(DYN_LIMIT_SENSOR_ID, STATE_UNAVAILABLE)
-        await coordinator.async_refresh()
-        await hass.async_block_till_done()
-        assert len(resume_calls) == 0
-        assert len(pause_calls) == 0
-        assert len(set_current_calls) == 0
-
-        # Steg 2: Bilen ansluts, status -> awaiting_start. Laddning ska starta.
-        print("TESTSTEG 2: Awaiting Start - Förväntar START")
-        resume_calls.clear()
-        set_current_calls.clear()
-        pause_calls.clear()
-        hass.states.async_set("sensor.easee_status", EASEE_STATUS_AWAITING_START)
-        hass.states.async_set(DYN_LIMIT_SENSOR_ID, STATE_UNAVAILABLE)
-        await coordinator.async_refresh()
-        await hass.async_block_till_done()
-        assert len(resume_calls) == 1, "Laddning startade inte vid awaiting_start"
-        assert len(set_current_calls) == 1, "Ström sattes inte vid awaiting_start"
-
-        # Steg 3: Simulera att laddaren nu faktiskt laddar.
-        print("TESTSTEG 3: Charging (efter start) - Förväntar ingen ny åtgärd")
-        hass.states.async_set("sensor.easee_status", EASEE_STATUS_CHARGING)
-        hass.states.async_set(
-            DYN_LIMIT_SENSOR_ID, "16.0"
-        )  # Antag att strömmen sattes korrekt till 16A
-        resume_calls.clear()
-        pause_calls.clear()
-        set_current_calls.clear()
-        await coordinator.async_refresh()
-        await hass.async_block_till_done()
-        assert len(resume_calls) == 0, "Onödig resume när laddning redan pågår"
-        assert len(set_current_calls) == 0, (
-            "Onödigt set_current när laddning redan pågår med rätt ström"
-        )
-
-        # Steg 4: Laddningen pausas externt, status -> awaiting_start (från 'charging')
-        print(
-            "TESTSTEG 4: Externt pausad (status awaiting_start) - Förväntar ÅTERSTART"
-        )
-        resume_calls.clear()
-        set_current_calls.clear()
-        pause_calls.clear()
-        # Den dynamiska gränsen på laddaren antas vara oförändrad (fortfarande 16A)
-        # eftersom en extern paus inte nödvändigtvis ändrar den.
-        hass.states.async_set(DYN_LIMIT_SENSOR_ID, "16.0")
-        hass.states.async_set("sensor.easee_status", EASEE_STATUS_AWAITING_START)
-        await coordinator.async_refresh()
-        await hass.async_block_till_done()
-        assert len(resume_calls) == 1, (
-            "Laddning återupptogs inte efter extern paus till awaiting_start"
-        )
-        # Eftersom DYN_LIMIT_SENSOR_ID fortfarande är 16A, och målet är 16A,
-        # ska set_current INTE anropas igen tack vare optimeringen.
-        assert len(set_current_calls) == 0, (
-            "Ström sattes felaktigt vid återstart när gränsen redan var korrekt"
-        )
+    # Steg 4: Laddningen pausas externt, status -> awaiting_start (från 'charging')
+    print(
+        "TESTSTEG 4: Externt pausad (status awaiting_start) - Förväntar ÅTERSTART"
+    )
+    action_command_calls.clear()
+    set_current_calls.clear()
+    hass.states.async_set(DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE, "16.0")
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_AWAITING_START)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert len(action_command_calls) == 1, (
+        "Laddning återupptogs inte efter extern paus till awaiting_start"
+    )
+    assert action_command_calls[0].data["action_command"] == "resume"
+    assert len(set_current_calls) == 0, (
+        "Ström sattes felaktigt vid återstart när gränsen redan var korrekt"
+    )
+    assert coordinator.active_control_mode == CONTROL_MODE_PRICE_TIME

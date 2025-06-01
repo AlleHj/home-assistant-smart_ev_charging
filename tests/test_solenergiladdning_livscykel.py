@@ -32,8 +32,9 @@ from custom_components.smart_ev_charging.const import (
     CONF_HOUSE_POWER_SENSOR,
     CONF_CHARGER_ENABLED_SWITCH_ID,
     EASEE_STATUS_READY_TO_CHARGE,
+    EASEE_STATUS_CHARGING,  # Används i teststeg 6
     CONTROL_MODE_MANUAL,
-    CONTROL_MODE_SOLAR_SURPLUS,
+    CONTROL_MODE_SOLAR_SURPLUS,  # Används i detta test (hette CONTROL_MODE_SOLAR tidigare i coordinator.py, se kommentar nedan)
     SOLAR_SURPLUS_DELAY_SECONDS,
     MIN_CHARGE_CURRENT_A,
     ENTITY_ID_SUFFIX_SMART_ENABLE_SWITCH,
@@ -43,6 +44,7 @@ from custom_components.smart_ev_charging.const import (
     ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER,
     PHASES,
     VOLTAGE_PHASE_NEUTRAL,
+    EASEE_SERVICE_SET_DYNAMIC_CURRENT,  # Korrekt importerad här
 )
 from custom_components.smart_ev_charging.coordinator import SmartEVChargingCoordinator
 
@@ -105,10 +107,13 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     coordinator._internal_entities_resolved = True
 
     # Mocka tjänsteanrop till Easee-integrationen
-    resume_calls = async_mock_service(hass, "easee", "resume_charging")
-    pause_calls = async_mock_service(hass, "easee", "pause_charging")
+    action_command_calls = async_mock_service(
+        hass, "easee", "action_command"
+    )  # Ersätter resume_calls och pause_calls
     set_current_calls = async_mock_service(
-        hass, "easee", "set_dynamic_charger_circuit_current"
+        hass,
+        "easee",
+        EASEE_SERVICE_SET_DYNAMIC_CURRENT,  # Använder importerad konstant
     )
 
     # Grundläggande setup för testet:
@@ -143,7 +148,7 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     await hass.async_block_till_done()
 
     # FÖRVÄNTAT RESULTAT: Ingen laddning ska ha startats. Styrningsläget ska vara manuellt (AV).
-    assert len(resume_calls) == 0
+    assert len(action_command_calls) == 0  # Kontrollerar action_command_calls
     assert hass.states.get(CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_MANUAL
 
     # --- 3. Teststeg: Otillräckligt överskott ---
@@ -180,7 +185,7 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     await hass.async_block_till_done()
 
     # FÖRVÄNTAT RESULTAT: Ingen laddning. Styrningsläge manuellt.
-    assert len(resume_calls) == 0
+    assert len(action_command_calls) == 0  # Kontrollerar action_command_calls
     assert hass.states.get(CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_MANUAL
 
     # --- 4. Teststeg: Tillräckligt överskott (inom fördröjning) ---
@@ -214,7 +219,7 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     await hass.async_block_till_done()
 
     # FÖRVÄNTAT RESULTAT: Ingen laddning än. Fördröjningstimern ska ha startat. Styrningsläge manuellt.
-    assert len(resume_calls) == 0
+    assert len(action_command_calls) == 0  # Kontrollerar action_command_calls
     assert (
         coordinator._solar_surplus_start_time is not None
     )  # Timern ska ha initierats.
@@ -233,7 +238,10 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     await hass.async_block_till_done()
 
     # FÖRVÄNTAT RESULTAT: Laddning ska starta. Styrningsläge SOLENERGI. Korrekt ström ska sättas.
-    assert len(resume_calls) == 1, "Laddning startade inte efter fördröjningen."
+    assert len(action_command_calls) == 1, "Laddning startade inte efter fördröjningen."
+    assert (
+        action_command_calls[0].data["action_command"] == "resume"
+    )  # Kontrollerar resume-kommando
     assert hass.states.get(CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_SOLAR_SURPLUS
 
     # Förväntad ström är current_target_amps_delay (7A)
@@ -261,14 +269,16 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
         {"unit_of_measurement": UnitOfPower.WATT},
     )
     # Simulera att laddaren nu är i 'charging'-status efter föregående steg.
-    hass.states.async_set(MOCK_STATUS_SENSOR_ID, "charging")
+    hass.states.async_set(
+        MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING
+    )  # Använder konstanten
 
     # UTFÖRANDE: Kör en uppdatering.
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
     # FÖRVÄNTAT RESULTAT: Ett nytt anrop till set_dynamic_current ska ha gjorts med den nya strömmen (10A).
-    assert len(set_current_calls) == 2, (
+    assert len(set_current_calls) == 2, (  # Nu 2 anrop totalt (start + justering)
         "set_dynamic_current anropades inte vid justering."
     )
     assert set_current_calls[1].data["currentP1"] == current_target_amps_adjust
@@ -290,7 +300,15 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     await hass.async_block_till_done()
 
     # FÖRVÄNTAT RESULTAT: Laddningen ska pausas. Styrningsläge manuellt. Timers för solenergi ska nollställas.
-    assert len(pause_calls) == 1, "Laddning pausades inte."
+    # action_command_calls hade 1 anrop (resume). Nu ska ett paus-kommando skickats. Totalt 2.
+    assert len(action_command_calls) == 2, "Laddning pausades inte."
+    assert (
+        action_command_calls[1].data["action_command"] == "pause"
+    )  # Sista kommandot ska vara paus
+
+    # Styrningsläget ska vara SOLENERGI, men should_charge_flag blir False, vilket leder till paus.
+    # Om inget överskott finns och inget pris/tid är aktivt, faller den tillbaka till MANUELL.
+    # Denna logik finns i slutet av _async_update_data i coordinator.py.
     assert hass.states.get(CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_MANUAL
     assert coordinator._solar_surplus_start_time is None  # Timern ska vara nollställd.
     assert coordinator._solar_session_active is False  # Solsessionen ska vara avslutad.

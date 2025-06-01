@@ -35,31 +35,22 @@ from custom_components.smart_ev_charging.const import (
     CONF_PRICE_SENSOR,
     CONF_TIME_SCHEDULE_ENTITY,
     CONF_DEBUG_LOGGING,
-    EASEE_SERVICE_RESUME_CHARGING,
-    EASEE_SERVICE_PAUSE_CHARGING,
-    EASEE_SERVICE_SET_DYNAMIC_CURRENT,
+    EASEE_SERVICE_SET_DYNAMIC_CURRENT,  # Behövs för mockning
     EASEE_STATUS_READY_TO_CHARGE,
     EASEE_STATUS_CHARGING,
     CONTROL_MODE_MANUAL,
     CONTROL_MODE_PRICE_TIME,
-    # Följande suffix används för att bygga de faktiska ID:na, kan vara bra att ha kvar för referens
-    # ENTITY_ID_SUFFIX_SMART_ENABLE_SWITCH,
-    # ENTITY_ID_SUFFIX_MAX_PRICE_NUMBER,
-    # ENTITY_ID_SUFFIX_ENABLE_SOLAR_CHARGING_SWITCH,
-    # ENTITY_ID_SUFFIX_SOLAR_BUFFER_NUMBER,
-    # ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER,
 )
 from custom_components.smart_ev_charging.coordinator import SmartEVChargingCoordinator
 
-# Mockade externa entitets-ID:n
+# Mockade externa entitets-ID:n (som definierade i din originalfil)
 MOCK_CONFIG_ENTRY_ID = "test_main_switch_interaction_entry"
 MOCK_STATUS_SENSOR_ID = "sensor.test_charger_status_main_switch"
 MOCK_PRICE_SENSOR_ID = "sensor.test_price_main_switch"
 MOCK_SCHEDULE_ID = "schedule.test_charging_schedule_main_switch"
-MOCK_MAIN_POWER_SWITCH_ID = "switch.mock_charger_power_main_switch"  # Denna switchs tillstånd manipuleras i testerna
+MOCK_MAIN_POWER_SWITCH_ID = "switch.mock_charger_power_main_switch"
 
 # Faktiska entitets-ID:n som Home Assistant kommer att skapa baserat på namngivning.
-# Dessa används för att interagera med de entiteter som integrationen själv skapar.
 ACTUAL_CONTROL_MODE_SENSOR_ID = "sensor.avancerad_elbilsladdning_aktivt_styrningslage"
 ACTUAL_SMART_SWITCH_ID = "switch.avancerad_elbilsladdning_smart_laddning_aktiv"
 ACTUAL_SOLAR_SWITCH_ID = "switch.avancerad_elbilsladdning_aktivera_solenergiladdning"
@@ -107,8 +98,6 @@ async def setup_coordinator(hass: HomeAssistant):
     assert coordinator is not None
 
     # Manuell tilldelning av de FAKTISKA interna entitets-ID:na till koordinatorn.
-    # Detta är nödvändigt eftersom _resolve_internal_entities kan köras innan
-    # entiteterna är fullt registrerade i en testmiljö.
     coordinator.smart_enable_switch_entity_id = ACTUAL_SMART_SWITCH_ID
     coordinator.max_price_entity_id = ACTUAL_MAX_PRICE_ID
     coordinator.solar_enable_switch_entity_id = ACTUAL_SOLAR_SWITCH_ID
@@ -119,21 +108,11 @@ async def setup_coordinator(hass: HomeAssistant):
     )
 
     # Sätt grundläggande tillstånd för de FAKTISKA interna entiteterna
-    # så att koordinatorn kan läsa dem korrekt.
-    hass.states.async_set(
-        ACTUAL_SMART_SWITCH_ID, STATE_ON
-    )  # Smart laddning (Pris/Tid) PÅ som default
-    hass.states.async_set(
-        ACTUAL_SOLAR_SWITCH_ID, STATE_OFF
-    )  # Solenergiladdning AV som default
-    hass.states.async_set(ACTUAL_MAX_PRICE_ID, "1.00")  # Maxpris för Pris/Tid
-    hass.states.async_set(ACTUAL_SOLAR_BUFFER_ID, "200")  # Solenergi buffert
-    hass.states.async_set(
-        ACTUAL_MIN_SOLAR_CURRENT_ID, "6"
-    )  # Minsta ström för solenergi
-
-    # Säkerställ att sensorn för aktivt styrningsläge har ett initialt värde.
-    # Denna uppdateras normalt av koordinatorn efter första körningen.
+    hass.states.async_set(ACTUAL_SMART_SWITCH_ID, STATE_ON)
+    hass.states.async_set(ACTUAL_SOLAR_SWITCH_ID, STATE_OFF)
+    hass.states.async_set(ACTUAL_MAX_PRICE_ID, "1.00")
+    hass.states.async_set(ACTUAL_SOLAR_BUFFER_ID, "200")
+    hass.states.async_set(ACTUAL_MIN_SOLAR_CURRENT_ID, "6")
     hass.states.async_set(ACTUAL_CONTROL_MODE_SENSOR_ID, CONTROL_MODE_MANUAL)
 
     return coordinator
@@ -161,7 +140,7 @@ async def test_main_switch_off_prevents_charging(
 
     FÖRVÄNTAT RESULTAT (Assert):
         - Inget försök görs att slå PÅ huvudströmbrytaren (inga `homeassistant.turn_on`-anrop).
-        - Ingen laddning initieras (inga `easee.resume_charging` eller `easee.set_dynamic_current`-anrop).
+        - Ingen laddning initieras (inga `easee.action_command` eller `easee.set_dynamic_current`-anrop).
         - Sensorn för aktivt styrningsläge visar `CONTROL_MODE_MANUAL` (AV).
         - En loggpost på DEBUG-nivå indikerar att anledningen till ingen laddning är att huvudströmbrytaren är AV.
     """
@@ -171,26 +150,26 @@ async def test_main_switch_off_prevents_charging(
     hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_OFF)
     hass.states.async_set(
         MOCK_STATUS_SENSOR_ID,
-        EASEE_STATUS_READY_TO_CHARGE[0],  # Laddaren är redo
+        EASEE_STATUS_READY_TO_CHARGE[0],
     )
-    hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.50")  # Lågt pris
-    hass.states.async_set(MOCK_SCHEDULE_ID, STATE_ON)  # Schema aktivt
+    hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.50")
+    hass.states.async_set(MOCK_SCHEDULE_ID, STATE_ON)
 
-    # Mocka tjänsteanrop för att verifiera att de INTE anropas som de inte ska
+    # Mocka tjänsteanrop
     turn_on_calls = async_mock_service(hass, "homeassistant", SERVICE_TURN_ON)
-    resume_calls = async_mock_service(hass, "easee", EASEE_SERVICE_RESUME_CHARGING)
+    action_command_calls = async_mock_service(hass, "easee", "action_command")
     set_current_calls = async_mock_service(
         hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
     )
 
     # ACT: Kör en uppdatering av koordinatorn
-    caplog.clear()  # Rensa tidigare loggar
+    caplog.clear()
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
     # ASSERT: Verifiera att inga oönskade åtgärder har vidtagits
     assert len(turn_on_calls) == 0, "Försökte felaktigt slå PÅ huvudströmbrytaren."
-    assert len(resume_calls) == 0, (
+    assert len(action_command_calls) == 0, (
         "Laddning startades felaktigt trots att huvudströmbrytaren var AV."
     )
     assert len(set_current_calls) == 0, (
@@ -206,13 +185,13 @@ async def test_main_switch_off_prevents_charging(
         f"Förväntade styrningsläge {CONTROL_MODE_MANUAL}, men fick {control_mode_state.state}."
     )
 
-    # Verifiera att korrekt anledning loggades
-    expected_log_message = "Huvudströmbrytare för laddbox är AV."
-    # Detta meddelande sätts som `reason_for_action` och loggas i DEBUG-raden i slutet av _async_update_data
-    assert expected_log_message in caplog.text, (
-        f"Förväntad loggpost '{expected_log_message}' saknas. Caplog: {caplog.text}"
+    # Verifiera att korrekt anledning loggades (eller att should_charge är False och anledningen är korrekt)
+    # Notera: Den exakta loggtexten kan variera beroende på hur _async_update_data formulerar "reason_for_action".
+    # Det viktiga är att `coordinator.should_charge_flag` är False och anledningen är relaterad till huvudströmbrytaren.
+    assert coordinator.should_charge_flag is False
+    assert "Huvudströmbrytare för laddbox är AV" in coordinator.data.get(
+        "should_charge_reason", ""
     )
-    print("\nTest OK: Huvudströmbrytare AV förhindrade laddning som förväntat.")
 
 
 async def test_manual_turn_off_main_switch_stops_charging(
@@ -223,8 +202,8 @@ async def test_manual_turn_off_main_switch_stops_charging(
 
     SYFTE:
         Att verifiera att integrationen reagerar på en extern avstängning av
-        huvudströmbrytaren genom att pausa laddningen och återställa sitt
-        styrningsläge till manuellt.
+        huvudströmbrytaren genom att återställa sitt styrningsläge till manuellt
+        och INTE försöka skicka kommandon till en strömlös laddare.
 
     FÖRUTSÄTTNINGAR (Arrange):
         - Steg 1: En Pris/Tid-styrd laddningssession startas framgångsrikt.
@@ -237,91 +216,62 @@ async def test_manual_turn_off_main_switch_stops_charging(
         - Koordinatorn kör en uppdateringscykel (async_refresh) efter att strömbrytaren stängts av.
 
     FÖRVÄNTAT RESULTAT (Assert):
-        - Laddningen pausas (tjänsten `easee.pause_charging` anropas).
+        - INGEN tjänst `easee.action_command` (varken pause eller resume) ska anropas EFTER att strömmen brutits.
         - Inga försök görs att återuppta laddning eller sätta ström.
         - Sensorn för aktivt styrningsläge visar `CONTROL_MODE_MANUAL` (AV).
-        - En loggpost på DEBUG-nivå indikerar att anledningen är att huvudströmbrytaren är AV.
+        - En loggpost på INFO-nivå indikerar att huvudströmbrytaren stängts av och att man återgår till manuellt läge.
     """
     coordinator = setup_coordinator
 
     # ARRANGE - Steg 1: Starta en Pris/Tid-laddning
-    hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_ON)  # Huvudströmbrytare PÅ
+    hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_ON)
     hass.states.async_set(
         MOCK_STATUS_SENSOR_ID,
-        EASEE_STATUS_READY_TO_CHARGE[0],  # Laddare redo
+        EASEE_STATUS_READY_TO_CHARGE[0],
     )
-    hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.50")  # Lågt pris
-    hass.states.async_set(MOCK_SCHEDULE_ID, STATE_ON)  # Schema aktivt
+    hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.50")
+    hass.states.async_set(MOCK_SCHEDULE_ID, STATE_ON)
 
-    # Mocka tjänster för initial start
-    resume_calls = async_mock_service(hass, "easee", EASEE_SERVICE_RESUME_CHARGING)
+    action_command_calls = async_mock_service(hass, "easee", "action_command")
     set_current_calls = async_mock_service(
         hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
     )
-    # Pause-tjänsten behövs först senare, men mockas här för fullständighet
-    pause_calls = async_mock_service(hass, "easee", EASEE_SERVICE_PAUSE_CHARGING)
-    turn_on_calls = async_mock_service(
-        hass, "homeassistant", SERVICE_TURN_ON
-    )  # För att verifiera att den INTE anropas
+    turn_on_calls = async_mock_service(hass, "homeassistant", SERVICE_TURN_ON)
 
-    # Kör en första refresh för att initiera laddningen
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
-    # Verifiera att laddningen startade korrekt
-    assert len(resume_calls) == 1, "Laddning startade inte initialt som förväntat."
-    assert len(set_current_calls) == 1, "Laddström sattes inte initialt som förväntat."
-    control_mode_state_initial = hass.states.get(ACTUAL_CONTROL_MODE_SENSOR_ID)
-    assert control_mode_state_initial is not None, (
-        f"Sensor {ACTUAL_CONTROL_MODE_SENSOR_ID} hittades inte initialt."
-    )
-    assert control_mode_state_initial.state == CONTROL_MODE_PRICE_TIME, (
-        f"Styrningsläge var inte {CONTROL_MODE_PRICE_TIME} efter initial start."
+    assert len(action_command_calls) == 1, "Laddning startade inte initialt."
+    assert action_command_calls[0].data["action_command"] == "resume"
+    assert len(set_current_calls) == 1, "Laddström sattes inte initialt."
+    assert (
+        hass.states.get(ACTUAL_CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_PRICE_TIME
     )
 
     # ARRANGE - Steg 2: Simulera att laddning pågår och huvudströmbrytaren stängs av
-    hass.states.async_set(
-        MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING
-    )  # Uppdatera status till att laddning nu pågår
-    hass.states.async_set(
-        MOCK_MAIN_POWER_SWITCH_ID, STATE_OFF
-    )  # Användaren stänger AV huvudströmbrytaren
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
+    hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_OFF)
 
-    # Rensa tidigare anropsräknare och loggar för att verifiera nya åtgärder
-    resume_calls.clear()
+    action_command_calls.clear()  # Rensa tidigare anrop för att verifiera nya åtgärder
     set_current_calls.clear()
-    pause_calls.clear()
     turn_on_calls.clear()
     caplog.clear()
 
-    # ACT: Koordinatorn reagerar på det nya tillståndet för huvudströmbrytaren
+    # ACT
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
-    # ASSERT: Verifiera att laddningen har pausats och läget återställts
-    assert len(pause_calls) == 1, (
-        "Laddning pausades inte när huvudströmbrytaren stängdes av."
+    # ASSERT
+    assert (
+        len(action_command_calls) == 0
+    ), (  # Viktigt: Inget paus-kommando ska skickas till en strömlös enhet
+        "Försökte skicka kommando till laddaren efter att strömmen brutits."
     )
-    assert len(resume_calls) == 0, (
-        "Försökte felaktigt återuppta laddning efter avstängning."
-    )
-    assert len(set_current_calls) == 0, (
-        "Försökte felaktigt sätta ström efter avstängning."
-    )
-    assert len(turn_on_calls) == 0, "Försökte felaktigt slå PÅ huvudströmbrytaren."
+    assert len(set_current_calls) == 0
+    assert len(turn_on_calls) == 0
 
-    control_mode_state_final = hass.states.get(ACTUAL_CONTROL_MODE_SENSOR_ID)
-    assert control_mode_state_final is not None, (
-        f"Sensor {ACTUAL_CONTROL_MODE_SENSOR_ID} hittades inte efter avstängning."
-    )
-    assert control_mode_state_final.state == CONTROL_MODE_MANUAL, (
-        f"Förväntade styrningsläge {CONTROL_MODE_MANUAL} efter avstängning, men fick {control_mode_state_final.state}."
-    )
-
-    expected_log_message = "Huvudströmbrytare för laddbox är AV."
-    assert expected_log_message in caplog.text, (
-        f"Förväntad loggpost '{expected_log_message}' saknas efter avstängning. Caplog: {caplog.text}"
-    )
-    print(
-        "\nTest OK: Manuell avstängning av huvudströmbrytare stoppade laddning som förväntat."
+    assert hass.states.get(ACTUAL_CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_MANUAL
+    assert (
+        "Huvudströmbrytaren switch.mock_charger_power_main_switch stängdes av under en aktiv smart laddning."
+        in caplog.text
     )
