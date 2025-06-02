@@ -158,8 +158,9 @@ async def test_main_switch_off_prevents_charging(
     # Mocka tjänsteanrop
     turn_on_calls = async_mock_service(hass, "homeassistant", SERVICE_TURN_ON)
     action_command_calls = async_mock_service(hass, "easee", "action_command")
-    set_current_calls = async_mock_service(
-        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+
+    set_charger_dynamic_limit_calls = async_mock_service(
+        hass, "easee", "set_charger_dynamic_limit"
     )
 
     # ACT: Kör en uppdatering av koordinatorn
@@ -172,7 +173,7 @@ async def test_main_switch_off_prevents_charging(
     assert len(action_command_calls) == 0, (
         "Laddning startades felaktigt trots att huvudströmbrytaren var AV."
     )
-    assert len(set_current_calls) == 0, (
+    assert len(set_charger_dynamic_limit_calls) == 0, (
         "Laddström sattes felaktigt när ingen laddning ska ske."
     )
 
@@ -233,17 +234,18 @@ async def test_manual_turn_off_main_switch_stops_charging(
     hass.states.async_set(MOCK_SCHEDULE_ID, STATE_ON)
 
     action_command_calls = async_mock_service(hass, "easee", "action_command")
-    set_current_calls = async_mock_service(
-        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    set_charger_dynamic_limit_calls = async_mock_service(
+        hass, "easee", "set_charger_dynamic_limit"
     )
+
     turn_on_calls = async_mock_service(hass, "homeassistant", SERVICE_TURN_ON)
 
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
     assert len(action_command_calls) == 1, "Laddning startade inte initialt."
-    assert action_command_calls[0].data["action_command"] == "resume"
-    assert len(set_current_calls) == 1, "Laddström sattes inte initialt."
+    assert action_command_calls[0].data["action_command"] == "start"
+    assert len(set_charger_dynamic_limit_calls) == 1, "Laddström sattes inte initialt."
     assert (
         hass.states.get(ACTUAL_CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_PRICE_TIME
     )
@@ -253,7 +255,7 @@ async def test_manual_turn_off_main_switch_stops_charging(
     hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_OFF)
 
     action_command_calls.clear()  # Rensa tidigare anrop för att verifiera nya åtgärder
-    set_current_calls.clear()
+    set_charger_dynamic_limit_calls.clear()
     turn_on_calls.clear()
     caplog.clear()
 
@@ -267,11 +269,14 @@ async def test_manual_turn_off_main_switch_stops_charging(
     ), (  # Viktigt: Inget paus-kommando ska skickas till en strömlös enhet
         "Försökte skicka kommando till laddaren efter att strömmen brutits."
     )
-    assert len(set_current_calls) == 0
+    assert len(set_charger_dynamic_limit_calls) == 0
     assert len(turn_on_calls) == 0
 
     assert hass.states.get(ACTUAL_CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_MANUAL
-    assert (
-        "Huvudströmbrytaren switch.mock_charger_power_main_switch stängdes av under en aktiv smart laddning."
-        in caplog.text
+    # Verifiera att korrekt loggmeddelande skrevs när _control_charger avbröt pga huvudströmbrytaren
+    expected_log_message = (
+        "Huvudströmbrytare är AV. Inga kommandon skickas till laddaren."
+    )
+    assert expected_log_message in caplog.text, (
+        f"Förväntade loggmeddelande '{expected_log_message}' hittades inte i caplog."
     )

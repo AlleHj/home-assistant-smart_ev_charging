@@ -188,30 +188,35 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     assert len(action_command_calls) == 0  # Kontrollerar action_command_calls
     assert hass.states.get(CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_MANUAL
 
+    action_command_calls.clear()
+    set_current_calls.clear()
+
     # --- 4. Teststeg: Tillräckligt överskott (inom fördröjning) ---
-    # SYFTE: Verifiera att laddning inte startar omedelbart vid tillräckligt överskott, utan att fördröjningstiden respekteras.
-    print("\nTESTSTEG: Tillräckligt överskott (inom fördröjning)")
+    # SYFTE: Verifiera att laddning startar omedelbart vid tillräckligt överskott
+    print("\nTESTSTEG 4: Laddning startar direkt vid tillräckligt överskott")
     # FÖRUTSÄTTNINGAR: Produktion sätts för att ge 7A överskott.
     # (7A * 3 * 230V) + 1000W (hus) + 200W (buffer) = 4830W + 1200W = 6030W.
-    current_target_amps_delay = 7
-    production_for_delay = (
-        (current_target_amps_delay * PHASES * VOLTAGE_PHASE_NEUTRAL)
-        + house_consumption
-        + solar_buffer
+    current_target_amps_immediate_start = 7
+    production_for_immediate_start = (
+        (current_target_amps_immediate_start * PHASES * VOLTAGE_PHASE_NEUTRAL)
+        + house_consumption  # Använd variabeln från tidigare i testet
+        + solar_buffer  # Använd variabeln från tidigare i testet
     )
     hass.states.async_set(
         MOCK_SOLAR_SENSOR_ID,
-        str(production_for_delay),
+        str(production_for_immediate_start),
         {"unit_of_measurement": UnitOfPower.WATT},
     )
     hass.states.async_set(
         MOCK_HOUSE_POWER_SENSOR_ID,
-        str(house_consumption),
+        str(house_consumption),  # Behåll samma husförbrukning
         {"unit_of_measurement": UnitOfPower.WATT},
     )
 
+    # Säkerställ att laddaren är redo
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_READY_TO_CHARGE[0])
+
     # Nollställ interna timers för att säkerställa att fördröjningen testas korrekt.
-    coordinator._solar_surplus_start_time = None
     coordinator._solar_session_active = False
 
     # UTFÖRANDE: Kör en uppdatering.
@@ -219,81 +224,75 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     await hass.async_block_till_done()
 
     # FÖRVÄNTAT RESULTAT: Ingen laddning än. Fördröjningstimern ska ha startat. Styrningsläge manuellt.
-    assert len(action_command_calls) == 0  # Kontrollerar action_command_calls
-    assert (
-        coordinator._solar_surplus_start_time is not None
-    )  # Timern ska ha initierats.
-    assert (
-        hass.states.get(CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_MANUAL
-    )  # Fortfarande manuellt under fördröjning.
 
-    # --- 5. Teststeg: Laddning Startar efter fördröjning ---
-    # SYFTE: Verifiera att laddning startar efter att fördröjningstiden har passerat.
-    print("\nTESTSTEG: Laddning startar efter fördröjning")
-    # FÖRUTSÄTTNINGAR: Samma produktionsnivå som tidigare (ger 7A). Tiden har nu gått.
-
-    # UTFÖRANDE: Hoppa fram i tiden och kör en uppdatering.
-    freezer.tick(timedelta(seconds=SOLAR_SURPLUS_DELAY_SECONDS + 1))
-    await coordinator.async_refresh()
-    await hass.async_block_till_done()
-
-    # FÖRVÄNTAT RESULTAT: Laddning ska starta. Styrningsläge SOLENERGI. Korrekt ström ska sättas.
-    assert len(action_command_calls) == 1, "Laddning startade inte efter fördröjningen."
-    assert (
-        action_command_calls[0].data["action_command"] == "resume"
-    )  # Kontrollerar resume-kommando
-    assert hass.states.get(CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_SOLAR_SURPLUS
-
-    # Förväntad ström är current_target_amps_delay (7A)
-    assert len(set_current_calls) == 1, (
-        "set_dynamic_current anropades inte korrekt vid start."
+    assert coordinator._solar_surplus_start_time is None, (
+        "_solar_surplus_start_time borde vara None om ingen startfördröjning används."
     )
-    assert set_current_calls[0].data["currentP1"] == current_target_amps_delay
-    assert set_current_calls[0].data["currentP2"] == current_target_amps_delay
-    assert set_current_calls[0].data["currentP3"] == current_target_amps_delay
 
-    # --- 6. Teststeg: Laddströmmen justeras dynamiskt ---
-    # SYFTE: Verifiera att laddströmmen anpassas om solproduktionen ändras medan laddning pågår.
-    print("\nTESTSTEG: Laddströmmen justeras dynamiskt")
+    assert len(action_command_calls) == 0, (
+        f"Förväntade inget action_command för solenergistart, men fick: {action_command_calls}"
+    )
+
+    assert len(set_current_calls) == 1, (
+        f"Förväntade 1 anrop till set_charger_dynamic_limit, fick: {len(set_current_calls)}"
+    )
+    assert (
+        set_current_calls[0].data["current"] == current_target_amps_immediate_start
+    ), (
+        f"Förväntade ström {current_target_amps_immediate_start}A, fick {set_current_calls[0].data['current']}A"
+    )
+
+    assert (
+        hass.states.get(CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_SOLAR_SURPLUS
+    ), "Styrningsläget blev inte SOLENERGI direkt."
+    assert coordinator._solar_session_active is True, (
+        "Solenergisessionen blev inte markerad som aktiv."
+    )
+
+    action_command_calls.clear()
+    set_current_calls.clear()
+
+    print("\nTESTSTEG 5: Laddströmmen justeras dynamiskt UPPÅT")
     # FÖRUTSÄTTNINGAR: Produktionen ökar för att ge 10A överskott.
     # (10A * 3 * 230V) + 1000W (hus) + 200W (buffer) = 6900W + 1200W = 8100W.
-    current_target_amps_adjust = 10
-    production_for_adjust = (
-        (current_target_amps_adjust * PHASES * VOLTAGE_PHASE_NEUTRAL)
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
+
+    current_target_amps_dynamic_up = 10
+    production_for_10A_solar = (
+        (current_target_amps_dynamic_up * PHASES * VOLTAGE_PHASE_NEUTRAL)
         + house_consumption
         + solar_buffer
     )
     hass.states.async_set(
         MOCK_SOLAR_SENSOR_ID,
-        str(production_for_adjust),
+        str(production_for_10A_solar),
         {"unit_of_measurement": UnitOfPower.WATT},
     )
-    # Simulera att laddaren nu är i 'charging'-status efter föregående steg.
-    hass.states.async_set(
-        MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING
-    )  # Använder konstanten
 
     # UTFÖRANDE: Kör en uppdatering.
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
-    # FÖRVÄNTAT RESULTAT: Ett nytt anrop till set_dynamic_current ska ha gjorts med den nya strömmen (10A).
-    assert len(set_current_calls) == 2, (  # Nu 2 anrop totalt (start + justering)
-        "set_dynamic_current anropades inte vid justering."
+    assert len(action_command_calls) == 0, (
+        "Onödigt action_command vid dynamisk justering"
     )
-    assert set_current_calls[1].data["currentP1"] == current_target_amps_adjust
-    assert set_current_calls[1].data["currentP2"] == current_target_amps_adjust
-    assert set_current_calls[1].data["currentP3"] == current_target_amps_adjust
+    assert len(set_current_calls) == 1, (
+        "Förväntade 1 anrop för att justera upp strömmen"
+    )
+    assert set_current_calls[0].data["current"] == current_target_amps_dynamic_up, (
+        f"Förväntade ström {current_target_amps_dynamic_up}A, fick {set_current_calls[0].data.get('current')}A"
+    )
 
-    # --- 7. Teststeg: Laddning pausas när överskottet försvinner ---
+    action_command_calls.clear()
+    set_current_calls.clear()
+
     # SYFTE: Verifiera att laddningen pausas om solöverskottet blir för litet.
-    print("\nTESTSTEG: Laddning pausas")
+    print("\nTESTSTEG 6: Laddning pausas när överskottet försvinner")
     # FÖRUTSÄTTNINGAR: Produktionen sjunker så att överskottet blir för litet (t.ex. 500W).
-    # Överskott = 1500W (prod) - 1000W (hus) - 200W (buffer) = 300W. Ström = floor(300/690) = 0A.
+    # Överskott = 500W (prod) - 1000W (hus) - 200W (buffer) = 300W. Ström = floor(300/690) = 0A.
     hass.states.async_set(
-        MOCK_SOLAR_SENSOR_ID, "1500", {"unit_of_measurement": UnitOfPower.WATT}
+        MOCK_SOLAR_SENSOR_ID, "500", {"unit_of_measurement": UnitOfPower.WATT}
     )
-    # Status är fortfarande 'charging' från föregående steg, vilket är korrekt för att testa att den aktivt pausas.
 
     # UTFÖRANDE: Kör en uppdatering.
     await coordinator.async_refresh()
@@ -301,16 +300,14 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
 
     # FÖRVÄNTAT RESULTAT: Laddningen ska pausas. Styrningsläge manuellt. Timers för solenergi ska nollställas.
     # action_command_calls hade 1 anrop (resume). Nu ska ett paus-kommando skickats. Totalt 2.
-    assert len(action_command_calls) == 2, "Laddning pausades inte."
-    assert (
-        action_command_calls[1].data["action_command"] == "pause"
-    )  # Sista kommandot ska vara paus
+    # FÖRVÄNTAT RESULTAT: Strömmen ska sättas till 0A för att pausa. Inget "stop"-kommando behövs.
 
-    # Styrningsläget ska vara SOLENERGI, men should_charge_flag blir False, vilket leder till paus.
-    # Om inget överskott finns och inget pris/tid är aktivt, faller den tillbaka till MANUELL.
-    # Denna logik finns i slutet av _async_update_data i coordinator.py.
-    assert hass.states.get(CONTROL_MODE_SENSOR_ID).state == CONTROL_MODE_MANUAL
-    assert coordinator._solar_surplus_start_time is None  # Timern ska vara nollställd.
-    assert coordinator._solar_session_active is False  # Solsessionen ska vara avslutad.
-
-    print("\nTestet slutfört framgångsrikt!")
+    assert len(action_command_calls) == 0, (
+        "Onödigt action_command vid paus av solenergiladdning"
+    )
+    assert len(set_current_calls) == 1, (
+        "Förväntade 1 anrop för att pausa laddningen (sätta ström till 0)"
+    )
+    assert set_current_calls[0].data["current"] == 0, (
+        f"Förväntade ström 0A för att pausa, fick {set_current_calls[0].data.get('current')}A"
+    )

@@ -159,9 +159,10 @@ async def test_solar_to_price_time_on_price_drop(hass: HomeAssistant, caplog):
         start_time_utc = datetime(2025, 6, 1, 10, 0, 0, tzinfo=timezone.utc)
         hass.states.async_set(STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
 
-        set_current_calls = async_mock_service(
-            hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+        set_charger_dynamic_limit_calls = async_mock_service(
+            hass, "easee", "set_charger_dynamic_limit"
         )
+
         resume_calls = async_mock_service(hass, "easee", EASEE_SERVICE_RESUME_CHARGING)
 
         # 2. ACT & ASSERT - Steg 1: Högt elpris, Solenergi aktiv
@@ -188,14 +189,14 @@ async def test_solar_to_price_time_on_price_drop(hass: HomeAssistant, caplog):
             calculated_current_3phase, MAX_CHARGE_CURRENT_A_HW_DEFAULT
         )  # Ska bli min(10, 16) = 10A
 
-        assert len(set_current_calls) >= 1, (
+        assert len(set_charger_dynamic_limit_calls) >= 1, (
             "set_dynamic_current anropades inte för solenergi initialt"
         )
-        last_set_current_call = set_current_calls[-1]
+        last_set_current_call = set_charger_dynamic_limit_calls[-1]
         assert (
-            last_set_current_call.data["currentP1"] == expected_solar_current_initial
+            last_set_current_call.data["current"] == expected_solar_current_initial
         ), (
-            f"Förväntade ström {expected_solar_current_initial}A för sol, fick {last_set_current_call.data['currentP1']}A"
+            f"Förväntade ström {expected_solar_current_initial}A för sol, fick {last_set_current_call.data['current']}A"
         )
 
         # Uppdatera DYN_CURRENT_SENSOR_ID med det värde som sattes
@@ -203,7 +204,7 @@ async def test_solar_to_price_time_on_price_drop(hass: HomeAssistant, caplog):
             DYN_CURRENT_SENSOR_ID, str(float(expected_solar_current_initial))
         )
 
-        set_current_calls.clear()
+        set_charger_dynamic_limit_calls.clear()
         resume_calls.clear()
 
         # 3. ACT & ASSERT - Steg 2: Elpriset sjunker, Pris/Tid tar över
@@ -225,15 +226,16 @@ async def test_solar_to_price_time_on_price_drop(hass: HomeAssistant, caplog):
             f"Förväntade PRIS_TID (lågt pris), fick {coordinator.active_control_mode}"
         )
 
-        assert len(set_current_calls) == 1, (
+        assert len(set_charger_dynamic_limit_calls) == 1, (
             "set_dynamic_current anropades inte eller fel antal gånger vid övergång till Pris/Tid"
         )
 
         # Strömmen ska nu sättas till hårdvarumax (16A)
         assert (
-            set_current_calls[0].data["currentP1"] == MAX_CHARGE_CURRENT_A_HW_DEFAULT
+            set_charger_dynamic_limit_calls[0].data["current"]
+            == MAX_CHARGE_CURRENT_A_HW_DEFAULT
         ), (
-            f"Förväntade ström {MAX_CHARGE_CURRENT_A_HW_DEFAULT}A för Pris/Tid, fick {set_current_calls[0].data['currentP1']}A"
+            f"Förväntade ström {MAX_CHARGE_CURRENT_A_HW_DEFAULT}A för Pris/Tid, fick {set_charger_dynamic_limit_calls[0].data['current']}A"
         )
 
         assert len(resume_calls) == 0, (

@@ -8,19 +8,23 @@ import logging
 # from typing import Set # Tas bort om ej använd
 
 from homeassistant.core import HomeAssistant
-from homeassistant.const import STATE_ON, STATE_OFF, STATE_UNAVAILABLE # STATE_UNAVAILABLE används
+from homeassistant.const import (
+    STATE_ON,
+    STATE_OFF,
+    STATE_UNAVAILABLE,
+)  # STATE_UNAVAILABLE används
 # from homeassistant.config_entries import ConfigEntryState # Tas bort om ej använd
 
 from pytest_homeassistant_custom_component.common import (
-    MockConfigEntry, # Används
-    async_mock_service, # Används
+    MockConfigEntry,  # Används
+    async_mock_service,  # Används
     # async_fire_time_changed, # Tas bort om ej använd
 )
 
 from custom_components.smart_ev_charging.const import (
     DOMAIN,
-    CONF_CHARGER_DEVICE, # Korrekt importerad nu
-    CONF_STATUS_SENSOR, # Korrekt importerad nu
+    CONF_CHARGER_DEVICE,  # Korrekt importerad nu
+    CONF_STATUS_SENSOR,  # Korrekt importerad nu
     CONF_CHARGER_ENABLED_SWITCH_ID,
     CONF_PRICE_SENSOR,
     CONF_TIME_SCHEDULE_ENTITY,
@@ -42,7 +46,9 @@ from custom_components.smart_ev_charging.const import (
 from custom_components.smart_ev_charging.coordinator import SmartEVChargingCoordinator
 
 # Lokalt definierade mock-konstanter för detta testfall
-MOCK_CHARGER_DEVICE_ID_CONN_OVERRIDE = "easee_123_conn_override" # Förtydligat namn för att undvika kollision
+MOCK_CHARGER_DEVICE_ID_CONN_OVERRIDE = (
+    "easee_123_conn_override"  # Förtydligat namn för att undvika kollision
+)
 MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE = "sensor.easee_status_conn_override"
 MOCK_PRICE_SENSOR_ID_CONN_OVERRIDE = "sensor.nordpool_price_conn_override"
 # MOCK_SCHEDULE_ID_CONN_OVERRIDE = "schedule.charging_time_conn_override" # Används inte då CONF_TIME_SCHEDULE_ENTITY är None
@@ -66,7 +72,7 @@ async def setup_coordinator_conn_override(hass: HomeAssistant):
             CONF_DEBUG_LOGGING: True,
             CONF_CHARGER_DYNAMIC_CURRENT_SENSOR: DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE,
         },
-        entry_id="test_connection_sequence_v2", # Unikt entry_id
+        entry_id="test_connection_sequence_v2",  # Unikt entry_id
     )
     entry.add_to_hass(hass)
 
@@ -98,7 +104,9 @@ async def setup_coordinator_conn_override(hass: HomeAssistant):
     return coordinator
 
 
-async def test_charger_connection_sequence_and_pause_override(hass: HomeAssistant, setup_coordinator_conn_override: SmartEVChargingCoordinator):
+async def test_charger_connection_sequence_and_pause_override(
+    hass: HomeAssistant, setup_coordinator_conn_override: SmartEVChargingCoordinator
+):
     """
     Testar en sekvens där bilen ansluts, laddning startar (Pris/Tid),
     laddning pågår, pausas externt (status ändras till awaiting_start),
@@ -139,7 +147,9 @@ async def test_charger_connection_sequence_and_pause_override(hass: HomeAssistan
 
     # Steg 1: Bilen är frånkopplad
     print("TESTSTEG 1: Disconnected")
-    hass.states.async_set(MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_DISCONNECTED[0])
+    hass.states.async_set(
+        MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_DISCONNECTED[0]
+    )
     hass.states.async_set(DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE, STATE_UNAVAILABLE)
     await coordinator.async_refresh()
     await hass.async_block_till_done()
@@ -151,46 +161,48 @@ async def test_charger_connection_sequence_and_pause_override(hass: HomeAssistan
     print("TESTSTEG 2: Awaiting Start - Förväntar START")
     action_command_calls.clear()
     set_current_calls.clear()
-    hass.states.async_set(MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_AWAITING_START)
+    hass.states.async_set(
+        MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_AWAITING_START
+    )
     hass.states.async_set(DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE, STATE_UNAVAILABLE)
     await coordinator.async_refresh()
     await hass.async_block_till_done()
     assert len(action_command_calls) == 1, "Laddning startade inte vid awaiting_start"
-    assert action_command_calls[0].data["action_command"] == "resume"
+    assert action_command_calls[0].data["action_command"] == "start"
     assert len(set_current_calls) == 1, "Ström sattes inte vid awaiting_start"
     assert coordinator.active_control_mode == CONTROL_MODE_PRICE_TIME
 
     # Steg 3: Simulera att laddaren nu faktiskt laddar.
     print("TESTSTEG 3: Charging (efter start) - Förväntar ingen ny åtgärd")
     hass.states.async_set(MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_CHARGING)
-    hass.states.async_set(
-        DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE, "16.0"
-    )
+    hass.states.async_set(DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE, "16.0")
     action_command_calls.clear()
     set_current_calls.clear()
     await coordinator.async_refresh()
     await hass.async_block_till_done()
-    assert len(action_command_calls) == 0, "Onödigt action_command när laddning redan pågår"
+    assert len(action_command_calls) == 0, (
+        "Onödigt action_command när laddning redan pågår"
+    )
     assert len(set_current_calls) == 0, (
         "Onödigt set_current när laddning redan pågår med rätt ström"
     )
     assert coordinator.active_control_mode == CONTROL_MODE_PRICE_TIME
 
     # Steg 4: Laddningen pausas externt, status -> awaiting_start (från 'charging')
-    print(
-        "TESTSTEG 4: Externt pausad (status awaiting_start) - Förväntar ÅTERSTART"
-    )
+    print("TESTSTEG 4: Externt pausad (status awaiting_start) - Förväntar ÅTERSTART")
     action_command_calls.clear()
     set_current_calls.clear()
-    hass.states.async_set(DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE, "16.0")
-    hass.states.async_set(MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_AWAITING_START)
+    hass.states.async_set(DYN_LIMIT_SENSOR_ID_CONN_OVERRIDE, "0")
+    hass.states.async_set(
+        MOCK_STATUS_SENSOR_ID_CONN_OVERRIDE, EASEE_STATUS_AWAITING_START
+    )
     await coordinator.async_refresh()
     await hass.async_block_till_done()
     assert len(action_command_calls) == 1, (
         "Laddning återupptogs inte efter extern paus till awaiting_start"
     )
-    assert action_command_calls[0].data["action_command"] == "resume"
-    assert len(set_current_calls) == 0, (
-        "Ström sattes felaktigt vid återstart när gränsen redan var korrekt"
+    assert action_command_calls[0].data["action_command"] == "start"
+    assert len(set_current_calls) == 1, (
+        "Ström sattes inte vid återstart när gränsen redan var korrekt"
     )
     assert coordinator.active_control_mode == CONTROL_MODE_PRICE_TIME

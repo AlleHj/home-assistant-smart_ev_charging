@@ -197,9 +197,10 @@ async def test_solar_to_price_time_transition(hass: HomeAssistant, caplog):
         )  # Pris/Tid-schemat är AV kl 19:00
 
         # Mocka tjänsteanrop
-        set_current_calls = async_mock_service(
-            hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+        set_charger_dynamic_limit_calls = async_mock_service(
+            hass, "easee", "set_charger_dynamic_limit"
         )
+
         resume_calls = async_mock_service(hass, "easee", EASEE_SERVICE_RESUME_CHARGING)
 
         # 2. ACT & ASSERT - Steg 1: Kl. 19:00 (Solenergiladdning aktiv)
@@ -245,17 +246,17 @@ async def test_solar_to_price_time_transition(hass: HomeAssistant, caplog):
         # Så om calculated_solar_current_a är 6A, och DYN_CURRENT_SENSOR_ID är 7A, ska den uppdatera till 9A.
         expected_solar_current = math.floor((5000 - 500 - 300) / (230 * 3))  # Blir 6A
 
-        assert len(set_current_calls) >= 1, (
+        assert len(set_charger_dynamic_limit_calls) >= 1, (
             "set_dynamic_current anropades inte för solenergi initialt"
         )
         # Det senaste anropet ska vara för solenergi
-        last_set_current_call = set_current_calls[-1]
-        assert last_set_current_call.data["currentP1"] == expected_solar_current, (
-            f"Förväntade ström {expected_solar_current}A för sol, fick {last_set_current_call.data['currentP1']}A"
+        last_set_current_call = set_charger_dynamic_limit_calls[-1]
+        assert last_set_current_call.data["current"] == expected_solar_current, (
+            f"Förväntade ström {expected_solar_current}A för sol, fick {last_set_current_call.data['current']}A"
         )
 
         # Nollställ mock-anrop inför nästa steg
-        set_current_calls.clear()
+        set_charger_dynamic_limit_calls.clear()
         resume_calls.clear()
 
         # 2. ACT & ASSERT - Steg 2: Klockan slår 20:00 (Pris/Tid tar över)
@@ -279,14 +280,15 @@ async def test_solar_to_price_time_transition(hass: HomeAssistant, caplog):
             f"Förväntade PRIS_TID kl 20:00, fick {coordinator.active_control_mode}"
         )
 
-        assert len(set_current_calls) == 1, (
+        assert len(set_charger_dynamic_limit_calls) == 1, (
             "set_dynamic_current anropades inte eller anropades fel antal gånger vid övergång till Pris/Tid"
         )
         # Det nya anropet ska sätta strömmen till max hårdvarugräns
         assert (
-            set_current_calls[0].data["currentP1"] == MAX_CHARGE_CURRENT_A_HW_DEFAULT
+            set_charger_dynamic_limit_calls[0].data["current"]
+            == MAX_CHARGE_CURRENT_A_HW_DEFAULT
         ), (
-            f"Förväntade ström {MAX_CHARGE_CURRENT_A_HW_DEFAULT}A för Pris/Tid, fick {set_current_calls[0].data['currentP1']}A"
+            f"Förväntade ström {MAX_CHARGE_CURRENT_A_HW_DEFAULT}A för Pris/Tid, fick {set_charger_dynamic_limit_calls[0].data['current']}A"
         )
 
         # resume_calls bör inte anropas om laddningen redan pågick

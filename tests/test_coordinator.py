@@ -160,8 +160,8 @@ async def test_price_time_charging_starts_when_conditions_are_met(
     coordinator = setup_coordinator
 
     action_command_calls = async_mock_service(hass, "easee", "action_command")
-    set_current_calls = async_mock_service(
-        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    set_charger_dynamic_limit_calls = async_mock_service(
+        hass, "easee", "set_charger_dynamic_limit"
     )
 
     hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.5")
@@ -175,8 +175,10 @@ async def test_price_time_charging_starts_when_conditions_are_met(
     assert len(action_command_calls) == 1, (
         "Tjänsten för att starta laddning anropades inte."
     )
-    assert action_command_calls[0].data["action_command"] == "resume"
-    assert len(set_current_calls) == 1, "Tjänsten för att sätta ström anropades inte."
+    assert action_command_calls[0].data["action_command"] == "start"
+    assert len(set_charger_dynamic_limit_calls) == 1, (
+        "Tjänsten för att sätta ström anropades inte."
+    )
 
 
 @pytest.mark.asyncio
@@ -186,8 +188,8 @@ async def test_charging_stops_when_price_is_too_high(
     """Testar att laddning stoppas när elpriset överstiger maxgränsen."""
     coordinator = setup_coordinator
     action_command_calls = async_mock_service(hass, "easee", "action_command")
-    set_current_calls = async_mock_service(
-        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    set_charger_dynamic_limit_calls = async_mock_service(
+        hass, "easee", "set_charger_dynamic_limit"
     )
 
     hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.5")
@@ -200,11 +202,11 @@ async def test_charging_stops_when_price_is_too_high(
     hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
 
     assert len(action_command_calls) == 1
-    assert action_command_calls[0].data["action_command"] == "resume"
-    assert len(set_current_calls) == 1
+    assert action_command_calls[0].data["action_command"] == "start"
+    assert len(set_charger_dynamic_limit_calls) == 1
 
     action_command_calls.clear()
-    set_current_calls.clear()
+    set_charger_dynamic_limit_calls.clear()
 
     hass.states.async_set(
         MOCK_PRICE_SENSOR_ID, "2.0"
@@ -217,7 +219,7 @@ async def test_charging_stops_when_price_is_too_high(
         "Tjänsten för att pausa laddning anropades inte eller fel antal gånger."
     )
     assert action_command_calls[0].data["action_command"] == "pause"
-    assert len(set_current_calls) == 0
+    assert len(set_charger_dynamic_limit_calls) == 0
 
 
 @pytest.mark.asyncio
@@ -227,8 +229,8 @@ async def test_charging_stops_when_schedule_is_off(
     """Testar att laddning stoppas när tidsschemat stängs av."""
     coordinator = setup_coordinator
     action_command_calls = async_mock_service(hass, "easee", "action_command")
-    set_current_calls = async_mock_service(
-        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    set_charger_dynamic_limit_calls = async_mock_service(
+        hass, "easee", "set_charger_dynamic_limit"
     )
 
     hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.5")
@@ -239,11 +241,11 @@ async def test_charging_stops_when_schedule_is_off(
     await hass.async_block_till_done()
     hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
     assert len(action_command_calls) == 1
-    assert action_command_calls[0].data["action_command"] == "resume"
-    assert len(set_current_calls) == 1
+    assert action_command_calls[0].data["action_command"] == "start"
+    assert len(set_charger_dynamic_limit_calls) == 1
 
     action_command_calls.clear()
-    set_current_calls.clear()
+    set_charger_dynamic_limit_calls.clear()
 
     hass.states.async_set(MOCK_SCHEDULE_ID, STATE_OFF)
 
@@ -252,7 +254,7 @@ async def test_charging_stops_when_schedule_is_off(
 
     assert len(action_command_calls) == 1
     assert action_command_calls[0].data["action_command"] == "pause"
-    assert len(set_current_calls) == 0
+    assert len(set_charger_dynamic_limit_calls) == 0
 
 
 @pytest.mark.asyncio
@@ -262,8 +264,9 @@ async def test_charging_stops_when_soc_limit_is_reached(
     """Testar att laddning stoppas när SOC-gränsen uppnås."""
     coordinator = setup_coordinator_with_soc
     action_command_calls = async_mock_service(hass, "easee", "action_command")
-    set_current_calls = async_mock_service(
-        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+
+    set_charger_dynamic_limit_calls = async_mock_service(
+        hass, "easee", "set_charger_dynamic_limit"
     )
 
     # ARRANGE - Steg 1: Starta laddning, SOC är under gränsen
@@ -282,8 +285,8 @@ async def test_charging_stops_when_soc_limit_is_reached(
     hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
 
     assert len(action_command_calls) == 1
-    assert action_command_calls[0].data["action_command"] == "resume"
-    assert len(set_current_calls) == 1
+    assert action_command_calls[0].data["action_command"] == "start"
+    assert len(set_charger_dynamic_limit_calls) == 1
 
     # Förväntad anledning när laddning startar (baserat på Pris/Tid)
     # Antag att surcharge är 0 och max_price är 1.0 från fixturen
@@ -298,7 +301,7 @@ async def test_charging_stops_when_soc_limit_is_reached(
 
     # Rensa anrop för nästa steg
     action_command_calls.clear()
-    set_current_calls.clear()
+    set_charger_dynamic_limit_calls.clear()
 
     # ARRANGE - Steg 2: SOC når gränsen
     hass.states.async_set(MOCK_SOC_SENSOR_ID, "81.0")
@@ -313,7 +316,7 @@ async def test_charging_stops_when_soc_limit_is_reached(
     )
     assert action_command_calls[0].data["action_command"] == "pause"
     assert (
-        len(set_current_calls) == 0
+        len(set_charger_dynamic_limit_calls) == 0
     )  # Ska inte försöka sätta ström när den pausar pga SoC
 
     expected_soc_reason = "SoC (81.0%) har nått målet (80.0%)."  # Baserat på fixturens CONF_TARGET_SOC_LIMIT = 80.0
@@ -332,8 +335,9 @@ async def test_full_day_price_time_simulation(
     """Simulerar en hel dag och verifierar att laddningen startar och stoppar vid rätt tidpunkter baserat på pris och schema."""
     coordinator = setup_coordinator
     action_command_calls = async_mock_service(hass, "easee", "action_command")
-    set_current_calls = async_mock_service(
-        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+
+    set_charger_dynamic_limit_calls = async_mock_service(
+        hass, "easee", "set_charger_dynamic_limit"
     )
 
     prices = [2.0] * 3 + [0.5] * 3 + [2.0] * 2 + [2.0] * 15 + [0.5] * 1

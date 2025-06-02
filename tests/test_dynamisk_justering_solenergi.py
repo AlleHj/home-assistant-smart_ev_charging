@@ -140,8 +140,8 @@ async def test_dynamic_current_adjustment_for_solar_charging(
     coordinator = setup_solar_charging_test
 
     action_command_calls = async_mock_service(hass, "easee", "action_command")
-    set_current_calls = async_mock_service(
-        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    set_charger_dynamic_limit_calls = async_mock_service(
+        hass, "easee", "set_charger_dynamic_limit"
     )
 
     # --- ARRANGE & ACT - Steg 1: Högt överskott ---
@@ -154,39 +154,20 @@ async def test_dynamic_current_adjustment_for_solar_charging(
     await hass.async_block_till_done()
 
     assert len(action_command_calls) == 0
-    assert len(set_current_calls) == 0
+    assert len(set_charger_dynamic_limit_calls) == 1
+    assert set_charger_dynamic_limit_calls[0].data["current"] == 8
 
-    freezer.tick(timedelta(seconds=SOLAR_SURPLUS_DELAY_SECONDS))
-
-    await coordinator.async_refresh()
-    await hass.async_block_till_done()
-
-    # --- ASSERT - Steg 1 ---
-    assert len(action_command_calls) == 1, (
-        "Laddning återupptogs inte efter fördröjningen."
-    )
-    assert action_command_calls[0].data["action_command"] == "resume"
-    assert len(set_current_calls) == 1, "Strömmen sattes inte vid start av laddning."
-    assert set_current_calls[0].data["currentP1"] == 8
+    action_command_calls.clear()
+    set_charger_dynamic_limit_calls.clear()
 
     # --- ARRANGE & ACT - Steg 2: Minskat överskott ---
-    # >>> KORRIGERING: Lägg till denna rad för att simulera att laddaren nu laddar <<<
     hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
-
     hass.states.async_set(MOCK_HOUSE_POWER_SENSOR_ID, "1500")
 
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
     # --- ASSERT - Steg 2 ---
-    assert (
-        len(action_command_calls) == 1
-    ), (  # Ska fortfarande vara 1, inget nytt start/stopp-kommando
-        "Ett onödigt start/stopp-kommando skickades vid strömjustering."
-    )
-    assert (
-        len(set_current_calls) == 2  # Ett nytt anrop för att justera strömmen
-    ), "Strömmen justerades inte när överskottet ändrades."
-    assert set_current_calls[1].data["currentP1"] == 7, (
-        "Strömmen justerades till fel värde."
-    )
+    assert len(action_command_calls) == 0
+    assert len(set_charger_dynamic_limit_calls) == 1
+    assert set_charger_dynamic_limit_calls[0].data["current"] == 7

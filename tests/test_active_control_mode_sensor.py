@@ -28,8 +28,7 @@ from custom_components.smart_ev_charging.const import (
     CONF_HOUSE_POWER_SENSOR,
     CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR,
     EASEE_SERVICE_SET_DYNAMIC_CURRENT,
-    EASEE_SERVICE_PAUSE_CHARGING,
-    EASEE_SERVICE_RESUME_CHARGING,
+    EASEE_SERVICE_ACTION_COMMAND,
     CONTROL_MODE_PRICE_TIME,
     CONTROL_MODE_SOLAR_SURPLUS,
     CONTROL_MODE_MANUAL,
@@ -127,9 +126,13 @@ async def test_active_control_mode_sensor_updates(hass: HomeAssistant, freezer):
     # Mocka externa sensorer och tjänsteanrop.
     hass.states.async_set(MOCK_CHARGER_MAX_LIMIT_ID, "16")
     hass.states.async_set(MOCK_MAIN_POWER_SWITCH_ID, STATE_ON)
-    async_mock_service(hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT)
-    async_mock_service(hass, "easee", EASEE_SERVICE_PAUSE_CHARGING)
-    async_mock_service(hass, "easee", EASEE_SERVICE_RESUME_CHARGING)
+    async_mock_service(
+        hass, "easee", EASEE_SERVICE_SET_DYNAMIC_CURRENT
+    )  # För set_charger_dynamic_limit
+    async_mock_service(
+        hass, "easee", EASEE_SERVICE_ACTION_COMMAND
+    )  # För action_command (start/pause)
+
 
     # --- 2. TESTSTEG 1: PRIS/TID ---
     # SYFTE: Verifiera att sensorn visar PRIS_TID när dessa villkor är uppfyllda.
@@ -157,7 +160,7 @@ async def test_active_control_mode_sensor_updates(hass: HomeAssistant, freezer):
     print(f"OK: Sensorns status är {sensor_state.state}")
 
     # --- 3. TESTSTEG 2: SOLENERGI ---
-    # SYFTE: Verifiera att sensorn visar SOLENERGI när dessa villkor är uppfyllda (inkl. fördröjning).
+    # SYFTE: Verifiera att sensorn visar SOLENERGI när dessa villkor är uppfyllda.
     print("\nTESTSTEG 2: Verifierar SOLENERGI-läge")
     # FÖRUTSÄTTNINGAR: Högt pris (för att P/T inte ska vara aktivt), sol-switch PÅ, P/T-switch AV,
     #                 god solproduktion, låg husförbrukning, buffer och minsta ström satta.
@@ -165,7 +168,7 @@ async def test_active_control_mode_sensor_updates(hass: HomeAssistant, freezer):
     hass.states.async_set(solar_switch_id_dyn, STATE_ON)
     hass.states.async_set(smart_switch_id_dyn, STATE_OFF)
     hass.states.async_set(
-        MOCK_SOLAR_PROD_SENSOR_ID, "5000", {"unit_of_measurement": UnitOfPower.WATT}
+        MOCK_SOLAR_PROD_SENSOR_ID, "7000", {"unit_of_measurement": UnitOfPower.WATT}
     )
     hass.states.async_set(
         MOCK_HOUSE_POWER_SENSOR_ID, "500", {"unit_of_measurement": UnitOfPower.WATT}
@@ -178,34 +181,18 @@ async def test_active_control_mode_sensor_updates(hass: HomeAssistant, freezer):
         MOCK_STATUS_SENSOR_ID, EASEE_STATUS_READY_TO_CHARGE[0]
     )  # Säkerställ att laddaren är redo
 
-    # Nollställ interna timers för solenergi för att testa fördröjningen korrekt.
-    coordinator._solar_surplus_start_time = None
-    coordinator._solar_session_active = False
+    coordinator._solar_session_active = False  # Nollställ för testet
 
     # UTFÖRANDE Steg 1: Kör en första refresh för att initiera fördröjningstimern.
     await coordinator.async_refresh()
     await hass.async_block_till_done()
-    # FÖRVÄNTAT: Läget ska fortfarande vara AV (MANUAL) eftersom fördröjningen inte passerat.
-    sensor_state_during_delay = hass.states.get(CONTROL_MODE_SENSOR_ID_DYNAMIC)
-    assert sensor_state_during_delay.state == CONTROL_MODE_MANUAL, (
-        f"Förväntade {CONTROL_MODE_MANUAL} under solfördröjning, fick {sensor_state_during_delay.state}"
-    )
-    assert coordinator._solar_surplus_start_time is not None, (
-        "Solenergi fördröjningstimer startade inte."
-    )
 
-    # UTFÖRANDE Steg 2: Hoppa fram i tiden förbi fördröjningen och kör en ny refresh.
-    freezer.tick(timedelta(seconds=SOLAR_SURPLUS_DELAY_SECONDS + 1))
-    await coordinator.async_refresh()
-    await hass.async_block_till_done()
-
-    # FÖRVÄNTAT RESULTAT: Sensorn ska nu visa SOLENERGI.
-    sensor_state_after_delay = hass.states.get(CONTROL_MODE_SENSOR_ID_DYNAMIC)
-    assert sensor_state_after_delay is not None
-    assert sensor_state_after_delay.state == CONTROL_MODE_SOLAR_SURPLUS, (
-        f"Förväntade {CONTROL_MODE_SOLAR_SURPLUS}, men fick {sensor_state_after_delay.state}"
+    sensor_state_solar = hass.states.get(CONTROL_MODE_SENSOR_ID_DYNAMIC)
+    assert sensor_state_solar is not None
+    assert sensor_state_solar.state == CONTROL_MODE_SOLAR_SURPLUS, (
+        f"Förväntade {CONTROL_MODE_SOLAR_SURPLUS} direkt, men fick {sensor_state_solar.state}"
     )
-    print(f"OK: Sensorns status är {sensor_state_after_delay.state}")
+    print(f"OK: Sensorns status är {sensor_state_solar.state}")
 
     # --- 4. TESTSTEG 3: AV (Manuell) ---
     # SYFTE: Verifiera att sensorn visar AV när inga smarta lägen är aktiva.

@@ -28,7 +28,6 @@ from custom_components.smart_ev_charging.const import (
     CONF_SCAN_INTERVAL,
     CONF_DEBUG_LOGGING,
     DEFAULT_SCAN_INTERVAL_SECONDS,
-    CONF_SURCHARGE_HELPER,
     CONF_TIME_SCHEDULE_ENTITY,
     CONF_HOUSE_POWER_SENSOR,
     CONF_SOLAR_PRODUCTION_SENSOR,
@@ -153,7 +152,6 @@ async def test_setup_and_options_modification_flow(hass: HomeAssistant):
         CONF_PRICE_SENSOR: MOCK_PRICE_SENSOR_ID,
         CONF_EV_SOC_SENSOR: MOCK_SOC_SENSOR_ID_INITIAL,
         CONF_TARGET_SOC_LIMIT: random_soc_limit,
-        CONF_SURCHARGE_HELPER: None,
         CONF_TIME_SCHEDULE_ENTITY: None,
         CONF_HOUSE_POWER_SENSOR: None,
         CONF_SOLAR_PRODUCTION_SENSOR: None,
@@ -208,7 +206,6 @@ async def test_setup_and_options_modification_flow(hass: HomeAssistant):
         # (den sparar ALL_CONF_KEYS i options).
         # Om de var None i entry.data, och ska förbli "tomma" för EntitySelector,
         # är None korrekt input här om schemat är vol.Maybe(EntitySelector).
-        CONF_SURCHARGE_HELPER: MOCK_SURCHARGE_HELPER_ID,  # Fyll i
         CONF_TIME_SCHEDULE_ENTITY: MOCK_TIME_SCHEDULE_ID,  # Fyll i
         CONF_HOUSE_POWER_SENSOR: MOCK_HOUSE_POWER_ID,  # Fyll i
         CONF_SOLAR_PRODUCTION_SENSOR: MOCK_SOLAR_PROD_ID,  # Fyll i
@@ -246,9 +243,6 @@ async def test_setup_and_options_modification_flow(hass: HomeAssistant):
     assert (
         updated_entry.options[CONF_CHARGER_DEVICE] == MOCK_EASEE_DEVICE_ID
     )  # Obligatoriska fält finns nu i options
-    assert (
-        updated_entry.options[CONF_SURCHARGE_HELPER] == MOCK_SURCHARGE_HELPER_ID
-    )  # Andra ifyllda fält
 
     # --- Del 4: Öppna Options igen (verifiera modifierade värden implicit) ---
     print("TESTDEL 4: Öppna Options igen (verifiera modifierade värden implicit)")
