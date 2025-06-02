@@ -57,8 +57,6 @@ CONTROL_MODE_MANUAL = "AV"
 MIN_CHARGE_CURRENT_A = 6
 MAX_CHARGE_CURRENT_A_HW_DEFAULT = 16
 POWER_MARGIN_W = 300
-SOLAR_SURPLUS_DELAY_SECONDS = 300
-
 
 # Fysiska konstanter för beräkningar
 PHASES = 3  # Antal faser som normalt används för laddning (kan behöva justeras om 1-fas är vanligt)

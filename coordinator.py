@@ -61,7 +61,6 @@ from .const import (
     MIN_CHARGE_CURRENT_A,
     MAX_CHARGE_CURRENT_A_HW_DEFAULT,
     POWER_MARGIN_W,
-    SOLAR_SURPLUS_DELAY_SECONDS,
     PHASES,
     VOLTAGE_PHASE_NEUTRAL,
 )
@@ -379,9 +378,7 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Säkerställer att den önskade laddströmmen (current_a) är inom tillåtna gränser:
         # Inte lägre än MIN_CHARGE_CURRENT_A (en konstant, t.ex. 6A).
-        # Inte högre än den faktiska hårdvarubegränsningen _charger_hw_max_amps.
-        # Inte högre än den current_a som skickades in (som kan ha beräknats från t.ex. solöverskott).
-        current_a = max(MIN_CHARGE_CURRENT_A, min(current_a, _charger_hw_max_amps))
+        current_a = min(current_a, _charger_hw_max_amps)
 
         # Hämtar entity_id för sensorn som rapporterar den *nuvarande* dynamiska strömgränsen på laddaren.
         current_dynamic_limit_entity_id = self.config.get(
@@ -892,9 +889,6 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Om en laddningssession pågick, återställ sessionsdata.
             if self.session_start_time_utc is not None:
                 self._reset_session_data(reason_for_action)
-            # Återställ timers och flaggor relaterade till solenergiladdning.
-            self._solar_surplus_start_time = None
-            self._solar_session_active = False
             # Återställ flagga för om Pris/Tid var det som senast initierade laddning.
             self._price_time_eligible_for_charging = False
         # Om huvudströmbrytaren för laddboxen är AV:
@@ -983,131 +977,53 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Om Pris/Tid-villkoren INTE är uppfyllda, OCH solenergiladdning är aktiverad (switch PÅ) OCH solenergi-schemat är aktivt:
             ### KORRIGERING STARTAR HÄR ### (Detta block är en tidigare korrigering från mig, se till att det är din avsedda logik)
             elif solar_charging_enabled and solar_schedule_active:
-                # Kommentar: active_control_mode_internal sätts nedan när/om solenergiladdning faktiskt startar.
-                # Beräkna tillgängligt solöverskott i Watt.
+                # Beräkna tillgängligt solöverskott och potentiell ström
                 available_solar_surplus_w = (
-                    current_solar_production_w  # Total solproduktion.
-                    - (  # Minus
-                        current_house_power_w  # Husets förbrukning.
-                        if current_house_power_w is not None  # Om husförbrukning finns.
-                        else 0  # Annars antag 0.
+                    current_solar_production_w
+                    - (
+                        current_house_power_w
+                        if current_house_power_w is not None
+                        else 0
                     )
-                    - solar_buffer_w  # Minus den inställda bufferten.
+                    - solar_buffer_w
+                )
+                calculated_solar_current_a = math.floor(
+                    available_solar_surplus_w / (PHASES * VOLTAGE_PHASE_NEUTRAL)
                 )
 
-                # Om det finns ett positivt solöverskott:
-                if available_solar_surplus_w > 0:
-                    # Beräkna hur många Ampere detta överskott motsvarar för trefasladdning.
-                    # math.floor avrundar nedåt till närmaste heltal.
-                    calculated_solar_current_a = math.floor(
-                        available_solar_surplus_w
-                        / (
-                            PHASES * VOLTAGE_PHASE_NEUTRAL
-                        )  # Effekt / (antal faser * spänning per fas)
+                # Kontrollera om överskottet är tillräckligt för att starta laddning
+                if calculated_solar_current_a >= min_solar_charge_current_a:
+                    # Överskottet är tillräckligt, starta laddning omedelbart.
+                    self.active_control_mode_internal = CONTROL_MODE_SOLAR_SURPLUS
+                    self.should_charge_flag = True
+                    self.target_charge_current_a = min(
+                        calculated_solar_current_a, charger_hw_max_amps
                     )
-                    # Om den beräknade solströmmen är tillräcklig (minst lika med minsta tillåtna för sol):
-                    if calculated_solar_current_a >= min_solar_charge_current_a:
-                        # Om ingen solenergisession är aktiv just nu:
-                        if not self._solar_session_active:
-                            # Om fördröjningstimern för solöverskott inte har startat än:
-                            if self._solar_surplus_start_time is None:
-                                # Starta timern genom att sätta starttiden till nuvarande tid.
-                                self._solar_surplus_start_time = current_time
+                    reason_for_action = f"Solenergiladdning aktiv (Överskott: {available_solar_surplus_w:.0f}W -> {self.target_charge_current_a:.1f}A)."
 
-                            # Om tiden som passerat sedan timern startade är längre än eller lika med den inställda fördröjningen:
-                            if (
-                                current_time - self._solar_surplus_start_time
-                            ).total_seconds() >= SOLAR_SURPLUS_DELAY_SECONDS:
-                                # Fördröjningen har passerat, dags att starta/aktivera solenergiladdning.
-                                self.active_control_mode_internal = CONTROL_MODE_SOLAR_SURPLUS  # Sätt aktivt läge till Solenergi.
-                                self.should_charge_flag = (
-                                    True  # Sätt flaggan att laddning ska ske.
-                                )
-                                # Sätt målladdströmmen till den beräknade solströmmen, men inte högre än laddarens max.
-                                self.target_charge_current_a = min(
-                                    calculated_solar_current_a, charger_hw_max_amps
-                                )
-                                # Sätt anledningen.
-                                reason_for_action = f"Solenergiladdning aktiv (Överskott: {available_solar_surplus_w:.0f}W -> {self.target_charge_current_a:.1f}A)."
-                                # Markera att en solenergisession nu är aktiv.
-                                self._solar_session_active = True
-                                # Om ingen session pågick, eller om föregående session var Pris/Tid:
-                                if (
-                                    self.session_start_time_utc is None
-                                    or self._price_time_eligible_for_charging  # Om Pris/Tid var det som gällde innan.
-                                ):
-                                    # Om en session faktiskt pågick (måste ha varit Pris/Tid i detta fall):
-                                    if self.session_start_time_utc is not None:
-                                        # Logga att vi byter från den.
-                                        _LOGGER.info(
-                                            "Avslutar föregående session (%s) för att starta Solenergi.",
-                                            self.active_control_mode_internal  # Det gamla värdet.
-                                            if self.active_control_mode_internal
-                                            != CONTROL_MODE_SOLAR_SURPLUS  # Om det inte redan var sol (bör inte hända här).
-                                            else "annan",
-                                        )
-                                        # Återställ sessionsdata.
-                                        self._reset_session_data(
-                                            f"Avslutar {self.active_control_mode_internal if self.active_control_mode_internal != CONTROL_MODE_SOLAR_SURPLUS else 'annan'} för Solenergi"
-                                        )
-                                    # Logga att en ny solenergisession startas.
-                                    _LOGGER.info("Startar ny Solenergi-session.")
-                                    # Sätt starttiden för sessionen.
-                                    self.session_start_time_utc = dt_util.utcnow()
-                            # Om fördröjningstiden INTE har passerat än:
-                            else:
-                                # Sätt läget till manuellt (vi styr inte aktivt laddningen än).
-                                self.active_control_mode_internal = CONTROL_MODE_MANUAL
-                                self.should_charge_flag = (
-                                    False  # Laddning ska inte ske.
-                                )
-                                # Sätt anledningen till att vi väntar.
-                                reason_for_action = f"Väntar på att solöverskott ({available_solar_surplus_w:.0f}W -> {calculated_solar_current_a:.1f}A) ska stabiliseras."
-                        # Om en solenergisession REDAN ÄR AKTIV:
-                        else:
-                            # Behåll solenergiläget.
-                            self.active_control_mode_internal = (
-                                CONTROL_MODE_SOLAR_SURPLUS
-                            )
-                            self.should_charge_flag = True  # Fortsätt ladda.
-                            # Uppdatera målladdströmmen baserat på det nuvarande överskottet.
-                            self.target_charge_current_a = min(
-                                calculated_solar_current_a, charger_hw_max_amps
-                            )
-                            # Sätt anledningen.
-                            reason_for_action = f"Solenergiladdning pågår (Överskott: {available_solar_surplus_w:.0f}W -> {self.target_charge_current_a:.1f}A)."
-                    # Om det beräknade solöverskottet är FÖR LITET för minsta laddström:
-                    else:
-                        # Sätt läget till manuellt.
-                        self.active_control_mode_internal = CONTROL_MODE_MANUAL
-                        self.should_charge_flag = False  # Ingen laddning.
-                        # Sätt anledningen.
-                        reason_for_action = f"För lite solöverskott ({available_solar_surplus_w:.0f}W -> {calculated_solar_current_a:.1f}A < {min_solar_charge_current_a:.1f}A min)."
-                        # Nollställ fördröjningstimern och flaggan för aktiv solsession.
-                        self._solar_surplus_start_time = None
-                        self._solar_session_active = False
-                        # Om en solsession var aktiv och avbröts, och det inte var Pris/Tid som tog över:
-                        if (
-                            self.session_start_time_utc is not None
-                            and not self._price_time_eligible_for_charging
-                        ):
-                            self._reset_session_data(
-                                reason_for_action
-                            )  # Återställ sessionsdata.
-                # Om det INTE finns något positivt solöverskott alls:
+                    # Om en Pris/Tid-session var aktiv, återställ den för att markera övergången
+                    if self._price_time_eligible_for_charging:
+                        self._reset_session_data("Avslutar Pris/Tid för Solenergi")
+
+                    # Starta en ny session om ingen redan pågår
+                    if self.session_start_time_utc is None:
+                        _LOGGER.info("Startar ny Solenergi-session.")
+                        self.session_start_time_utc = dt_util.utcnow()
+
                 else:
+                    # Överskottet är för litet, ingen solenergiladdning.
                     self.active_control_mode_internal = CONTROL_MODE_MANUAL
                     self.should_charge_flag = False
-                    reason_for_action = f"Inget solöverskott tillgängligt ({available_solar_surplus_w:.0f}W)."
-                    self._solar_surplus_start_time = None
-                    self._solar_session_active = False
+                    reason_for_action = f"För lite solöverskott ({available_solar_surplus_w:.0f}W -> {calculated_solar_current_a:.1f}A < {min_solar_charge_current_a:.1f}A min)."
+
+                    # Återställ sessionen om den som avslutas var en solsession
                     if (
                         self.session_start_time_utc is not None
                         and not self._price_time_eligible_for_charging
                     ):
                         self._reset_session_data(reason_for_action)
 
-                # Om solenergilogiken har körts, sätt att Pris/Tid inte är den som är berättigad.
+                # Markera att Pris/Tid inte är den aktiva logiken
                 self._price_time_eligible_for_charging = False
             ### KORRIGERING SLUTAR HÄR ###
             # Om varken Pris/Tid eller Solenergi-villkoren är uppfyllda:
