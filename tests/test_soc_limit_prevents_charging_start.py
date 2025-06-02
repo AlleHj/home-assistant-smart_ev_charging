@@ -50,6 +50,7 @@ def enable_debug_logging():
     # Sätt loggnivån till DEBUG för att fånga upp detaljerade loggar
     logging.getLogger(f"custom_components.{DOMAIN}").setLevel(logging.DEBUG)
 
+
 async def test_charging_is_prevented_by_soc_limit(hass: HomeAssistant, caplog):
     """
     Testar att ingen laddning startar när SoC-gränsen är uppnådd,
@@ -76,6 +77,8 @@ async def test_charging_is_prevented_by_soc_limit(hass: HomeAssistant, caplog):
         - Ett informativt meddelande ska loggas som förklarar varför laddning
           inte startas.
     """
+    caplog.set_level(logging.DEBUG, logger="custom_components.smart_ev_charging")
+
     # --- 1. ARRANGE ---
     entry_id_for_test = "test_soc_prevent_start_entry"
     target_soc_limit = 85.0
