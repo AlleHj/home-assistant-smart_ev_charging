@@ -30,7 +30,6 @@ from .const import (
     CONF_CHARGER_DEVICE,
     CONF_STATUS_SENSOR,
     CONF_PRICE_SENSOR,
-    CONF_SURCHARGE_HELPER,
     CONF_TIME_SCHEDULE_ENTITY,
     CONF_HOUSE_POWER_SENSOR,
     CONF_SOLAR_PRODUCTION_SENSOR,
@@ -54,7 +53,6 @@ ALL_CONF_KEYS = [
     CONF_STATUS_SENSOR,
     CONF_CHARGER_ENABLED_SWITCH_ID,
     CONF_PRICE_SENSOR,
-    CONF_SURCHARGE_HELPER,
     CONF_TIME_SCHEDULE_ENTITY,
     CONF_HOUSE_POWER_SENSOR,
     CONF_SOLAR_PRODUCTION_SENSOR,
@@ -69,7 +67,6 @@ ALL_CONF_KEYS = [
 ]
 
 OPTIONAL_ENTITY_CONF_KEYS = [
-    CONF_SURCHARGE_HELPER,
     CONF_TIME_SCHEDULE_ENTITY,
     CONF_HOUSE_POWER_SENSOR,
     CONF_SOLAR_PRODUCTION_SENSOR,
@@ -131,12 +128,6 @@ def _build_common_schema(
     defined_fields_with_selectors[CONF_PRICE_SENSOR] = (
         _get_current_or_repop_value(CONF_PRICE_SENSOR),
         EntitySelector(EntitySelectorConfig(domain="sensor", multiple=False)),
-    )
-    defined_fields_with_selectors[CONF_SURCHARGE_HELPER] = (
-        _get_current_or_repop_value(CONF_SURCHARGE_HELPER),
-        EntitySelector(
-            EntitySelectorConfig(domain=["sensor", "input_number"], multiple=False)
-        ),
     )
     defined_fields_with_selectors[CONF_TIME_SCHEDULE_ENTITY] = (
         _get_current_or_repop_value(CONF_TIME_SCHEDULE_ENTITY),

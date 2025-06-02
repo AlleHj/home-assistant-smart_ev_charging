@@ -7,7 +7,6 @@ DOMAIN = "smart_ev_charging"
 CONF_CHARGER_DEVICE = "charger_device_id"
 CONF_STATUS_SENSOR = "status_sensor_id"
 CONF_PRICE_SENSOR = "price_sensor_id"
-CONF_SURCHARGE_HELPER = "surcharge_helper_id"
 CONF_TIME_SCHEDULE_ENTITY = "time_schedule_entity_id"
 CONF_HOUSE_POWER_SENSOR = "house_power_sensor_id"
 CONF_SOLAR_PRODUCTION_SENSOR = "solar_production_sensor_id"
@@ -34,14 +33,6 @@ ENTITY_ID_SUFFIX_MIN_SOLAR_CHARGE_CURRENT_A_NUMBER = "min_solar_charging_current
 
 ENTITY_ID_SUFFIX_ACTIVE_CONTROL_MODE_SENSOR = "active_control_mode"
 
-# Easee specifika tjänster och statusvärden
-EASEE_SERVICE_SET_DYNAMIC_CURRENT = "set_dynamic_charger_circuit_current"
-EASEE_SERVICE_SET_CIRCUIT_MAX_CURRENT = "set_max_charger_circuit_current"
-EASEE_SERVICE_ENABLE_CHARGER = "activate_charger"
-EASEE_SERVICE_DISABLE_CHARGER = "deactivate_charger"
-EASEE_SERVICE_PAUSE_CHARGING = "pause_charging"
-EASEE_SERVICE_RESUME_CHARGING = "resume_charging"
-
 # Exempel på statusvärden från Easee
 EASEE_STATUS_DISCONNECTED = ["disconnected", "car_disconnected"]
 EASEE_STATUS_AWAITING_START = "awaiting_start"
@@ -67,7 +58,7 @@ MIN_CHARGE_CURRENT_A = 6
 MAX_CHARGE_CURRENT_A_HW_DEFAULT = 16
 POWER_MARGIN_W = 300
 SOLAR_SURPLUS_DELAY_SECONDS = 300
-PRICE_CHECK_INTERVAL_MINUTES = 15
+
 
 # Fysiska konstanter för beräkningar
 PHASES = 3  # Antal faser som normalt används för laddning (kan behöva justeras om 1-fas är vanligt)

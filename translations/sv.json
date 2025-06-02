@@ -10,7 +10,6 @@
           "status_sensor_id": "Statussensor för Laddaren *",
           "charger_enabled_switch_id": "Huvudströmbrytare för Laddboxen *",
           "price_sensor_id": "Elprissensor (Spotpris) *",
-          "surcharge_helper_id": "Påslagshjälpare (Avgifter/Moms, kr/kWh)",
           "time_schedule_entity_id": "Tidsschema för Pris/Tid-laddning",
           "house_power_sensor_id": "Effektsensor för Huset (W/kW)",
           "solar_production_sensor_id": "Effektsensor för Solproduktion (W/kW)",
@@ -44,7 +43,6 @@
           "status_sensor_id": "Statussensor för Laddaren",
           "charger_enabled_switch_id": "Huvudströmbrytare för Laddboxen",
           "price_sensor_id": "Elprissensor (Spotpris)",
-          "surcharge_helper_id": "Påslagshjälpare (Avgifter/Moms, kr/kWh)",
           "time_schedule_entity_id": "Tidsschema för Pris/Tid-laddning",
           "house_power_sensor_id": "Effektsensor för Huset (W/kW)",
           "solar_production_sensor_id": "Effektsensor för Solproduktion (W/kW)",
@@ -60,9 +58,9 @@
       }
     },
     "error": {
-        "invalid_target_soc": "Ogiltig SoC-gräns. Ange ett värde mellan 0 och 100.",
-        "invalid_scan_interval": "Ogiltigt uppdateringsintervall. Ange ett värde mellan 10 och 3600.",
-        "required_field": "Detta fält är obligatoriskt."
+      "invalid_target_soc": "Ogiltig SoC-gräns. Ange ett värde mellan 0 och 100.",
+      "invalid_scan_interval": "Ogiltigt uppdateringsintervall. Ange ett värde mellan 10 och 3600.",
+      "required_field": "Detta fält är obligatoriskt."
     }
   }
 }
