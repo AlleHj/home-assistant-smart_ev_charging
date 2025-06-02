@@ -48,6 +48,13 @@ EASEE_STATUS_COMPLETED = "completed"
 EASEE_STATUS_ERROR = "error"
 EASEE_STATUS_OFFLINE = "offline"
 
+# Återinförda tjänstekonstanter som används av tester
+EASEE_SERVICE_RESUME_CHARGING = "resume_charging"
+EASEE_SERVICE_ACTION_COMMAND = "action_command"
+EASEE_SERVICE_SET_DYNAMIC_CURRENT = "set_charger_dynamic_limit"
+# EASEE_SERVICE_PAUSE_CHARGING = "pause" # Om du vill ha med dessa för framtiden
+# EASEE_SERVICE_RESUME_CHARGING = "start" # Om du vill ha med dessa för framtiden
+
 # Kontrollägen
 CONTROL_MODE_PRICE_TIME = "PRIS_TID"
 CONTROL_MODE_SOLAR_SURPLUS = "SOLENERGI"
@@ -57,6 +64,8 @@ CONTROL_MODE_MANUAL = "AV"
 MIN_CHARGE_CURRENT_A = 6
 MAX_CHARGE_CURRENT_A_HW_DEFAULT = 16
 POWER_MARGIN_W = 300
+# Återinförd konstant som används av tester
+SOLAR_SURPLUS_DELAY_SECONDS = 60
 
 # Fysiska konstanter för beräkningar
 PHASES = 3  # Antal faser som normalt används för laddning (kan behöva justeras om 1-fas är vanligt)
