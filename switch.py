@@ -69,7 +69,7 @@ class SmartChargingBaseSwitch(SwitchEntity, RestoreEntity):
         last_state: State | None = await self.async_get_last_state()
 
         _LOGGER.debug("RestoreState för %s (unique_id: %s): last_state är %s",
-                      self.name, self.unique_id, last_state.state if last_state else "None")
+                        self.name, self.unique_id, last_state.state if last_state else "None")
 
         if last_state is not None and last_state.state is not None:
             if last_state.state == STATE_ON:
@@ -82,7 +82,7 @@ class SmartChargingBaseSwitch(SwitchEntity, RestoreEntity):
                 # self._attr_is_on behåller sitt defaultvärde från __init__
         else:
             _LOGGER.debug("Inget giltigt sparat tillstånd hittades för %s (%s), använder default: %s",
-                          self.name, self.unique_id, self._attr_is_on)
+                            self.name, self.unique_id, self._attr_is_on)
         # Ingen async_write_ha_state() här, det sköts av HA när den läser initialt tillstånd
 
     @property

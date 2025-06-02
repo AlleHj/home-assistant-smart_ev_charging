@@ -63,6 +63,7 @@ from .const import (
     POWER_MARGIN_W,
     PHASES,
     VOLTAGE_PHASE_NEUTRAL,
+    CONF_DEBUG_LOGGING,
 )
 
 _LOGGER = logging.getLogger(f"custom_components.{DOMAIN}")
@@ -78,6 +79,7 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.hass = hass
         self.entry = entry
         self.config = entry.data | entry.options
+        self._debug_logging = entry.options.get(CONF_DEBUG_LOGGING, False)
 
         super().__init__(
             hass,
@@ -159,11 +161,12 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 calculated_solar_current_a >= min_solar_charge_current_a
             ):  # Jämför med STARTTRÖSKELN från UI
                 # Villkor för att STARTA en ny session är uppfyllda. Starta direkt.
-                _LOGGER.debug(
-                    "Solöverskott tillräckligt (%.1fA >= %.1fA min-start). Startar solenergiladdning direkt.",
-                    calculated_solar_current_a,
-                    min_solar_charge_current_a,
-                )
+                if self._debug_logging:
+                    _LOGGER.debug(
+                        "Solöverskott tillräckligt (%.1fA >= %.1fA min-start). Startar solenergiladdning direkt.",
+                        calculated_solar_current_a,
+                        min_solar_charge_current_a,
+                    )
                 self._solar_session_active = True  # STARTA sessionen
                 self.active_control_mode_internal = CONTROL_MODE_SOLAR_SURPLUS
                 self.should_charge_flag = True
@@ -198,7 +201,8 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _resolve_internal_entities(self) -> bool:
         if self._internal_entities_resolved:
             return True
-        _LOGGER.debug("Koordinator: _resolve_internal_entities STARTAR.")
+        if self._debug_logging:
+            _LOGGER.debug("Koordinator: _resolve_internal_entities STARTAR.")
         try:
             ent_reg: EntityRegistry = async_get_entity_registry(self.hass)
             self.smart_enable_switch_entity_id = ent_reg.async_get_entity_id(
@@ -236,14 +240,16 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.min_solar_charge_current_entity_id,
                 ]
             ):
-                _LOGGER.debug(
-                    "Ett eller flera interna ID:n ej redo under _resolve_internal_entities."
-                )
+                if self._debug_logging:
+                    _LOGGER.debug(
+                        "Ett eller flera interna ID:n ej redo under _resolve_internal_entities."
+                    )
                 self._internal_entities_resolved = False
                 return False
 
             self._internal_entities_resolved = True
-            _LOGGER.debug("Koordinator: Interna ID:n OK.")
+            if self._debug_logging:
+                _LOGGER.debug("Koordinator: Interna ID:n OK.")
             return True
         except Exception as e:
             _LOGGER.error("Fel i _resolve_internal_entities: %s", e, exc_info=True)
@@ -251,7 +257,8 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return False
 
     def _setup_listeners(self) -> None:
-        _LOGGER.debug("Sätter upp lyssnare...")
+        if self._debug_logging:
+            _LOGGER.debug("Sätter upp lyssnare...")
         self._remove_listeners()
         external_entities = [
             self.config.get(CONF_STATUS_SENSOR),
@@ -269,10 +276,11 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             entity_id for entity_id in external_entities if entity_id
         ]
         if all_entities_to_listen:
-            _LOGGER.debug(
-                "Lyssnar på tillståndsförändringar för externa entiteter: %s",
-                all_entities_to_listen,
-            )
+            if self._debug_logging:
+                _LOGGER.debug(
+                    "Lyssnar på tillståndsförändringar för externa entiteter: %s",
+                    all_entities_to_listen,
+                )
             self.listeners.append(
                 async_track_state_change_event(
                     self.hass,
@@ -285,7 +293,8 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _remove_listeners(self) -> None:
         if self.listeners:
-            _LOGGER.debug("Tar bort %s lyssnare.", len(self.listeners))
+            if self._debug_logging:
+                _LOGGER.debug("Tar bort %s lyssnare.", len(self.listeners))
         while self.listeners:
             unsub = self.listeners.pop()
             unsub()
@@ -318,20 +327,25 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entity_id_to_check = entity_id_or_key
         if is_config_key:
             if not entity_id_or_key:
-                _LOGGER.debug(
-                    "Konfigurationsnyckel (som var None) för nummer är inte satt."
-                )
+                if self._debug_logging:
+                    _LOGGER.debug(
+                        "Konfigurationsnyckel (som var None) för nummer är inte satt."
+                    )
                 return default_value
             entity_id_to_check = self.config.get(str(entity_id_or_key))
 
         if not entity_id_to_check:
             if is_config_key:
-                _LOGGER.debug(
-                    "Konfigurationsnyckel %s för nummer är inte satt (resulterade i tomt entitets-ID).",
-                    entity_id_or_key,
-                )
+                if self._debug_logging:
+                    _LOGGER.debug(
+                        "Konfigurationsnyckel %s för nummer är inte satt (resulterade i tomt entitets-ID).",
+                        entity_id_or_key,
+                    )
             else:
-                _LOGGER.debug("Entitets-ID för nummer är inte satt (var None/tomt).")
+                if self._debug_logging:
+                    _LOGGER.debug(
+                        "Entitets-ID för nummer är inte satt (var None/tomt)."
+                    )
             return default_value
 
         state_obj = self.hass.states.get(str(entity_id_to_check))
@@ -381,9 +395,10 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None
         state_obj = self.hass.states.get(str(entity_id))
         if state_obj is None or state_obj.state in [STATE_UNAVAILABLE, STATE_UNKNOWN]:
-            _LOGGER.debug(
-                "Effektsensor %s (%s) otillgänglig.", entity_id_key, entity_id
-            )
+            if self._debug_logging:
+                _LOGGER.debug(
+                    "Effektsensor %s (%s) otillgänglig.", entity_id_key, entity_id
+                )
             return None
         try:
             val = float(state_obj.state)
@@ -485,17 +500,18 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Initierar variabeln för nuvarande dynamisk gräns till None.
         # Loggar ett debug-meddelande med aktuella parametrar och tillstånd för styrningen.
         # Detta är användbart för felsökning för att se vilka beslut som fattas.
-        _LOGGER.debug(
-            "Charger Control: should_charge=%s, current_a=%.1fA (begränsad av %.1fA HW), status=%s, reason='%s', current_dyn_limit=%.1fA",
-            should_charge,  # Ska laddning ske?
-            current_a,  # Målström efter begränsningar.
-            _charger_hw_max_amps,  # Faktisk HW-maxström.
-            charger_status,  # Laddarens nuvarande status.
-            reason,  # Anledningen till beslutet.
-            current_dynamic_limit_on_charger
-            if current_dynamic_limit_on_charger is not None
-            else -1.0,  # Nuvarande dynamisk gräns, eller -1.0 om okänd.
-        )
+        if self._debug_logging:
+            _LOGGER.debug(
+                "Charger Control: should_charge=%s, current_a=%.1fA (begränsad av %.1fA HW), status=%s, reason='%s', current_dyn_limit=%.1fA",
+                should_charge,  # Ska laddning ske?
+                current_a,  # Målström efter begränsningar.
+                _charger_hw_max_amps,  # Faktisk HW-maxström.
+                charger_status,  # Laddarens nuvarande status.
+                reason,  # Anledningen till beslutet.
+                current_dynamic_limit_on_charger
+                if current_dynamic_limit_on_charger is not None
+                else -1.0,  # Nuvarande dynamisk gräns, eller -1.0 om okänd.
+            )
 
         # Startar ett try-block för felhantering vid tjänsteanrop etc.
         try:
@@ -578,18 +594,20 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if self.active_control_mode_internal == CONTROL_MODE_PRICE_TIME:
                     # För Pris/Tid, säkerställ ALLTID HW max.
                     current_to_set_on_charger = _charger_hw_max_amps
-                    _LOGGER.debug(
-                        "Pris/Tid aktivt. Målström satt till HW max: %.1fA.",
-                        current_to_set_on_charger,
-                    )
+                    if self._debug_logging:
+                        _LOGGER.debug(
+                            "Pris/Tid aktivt. Målström satt till HW max: %.1fA.",
+                            current_to_set_on_charger,
+                        )
                 else:  # För Solenergi (eller andra framtida lägen)
                     current_to_set_on_charger = (
                         current_a  # Använd den beräknade måströmmen
                     )
-                    _LOGGER.debug(
-                        "Solenergi aktivt. Målström satt till beräknad: %.1fA.",
-                        current_to_set_on_charger,
-                    )
+                    if self._debug_logging:
+                        _LOGGER.debug(
+                            "Solenergi aktivt. Målström satt till beräknad: %.1fA.",
+                            current_to_set_on_charger,
+                        )
 
                 # Kontrollera om strömmen på laddaren behöver uppdateras
                 needs_current_update_on_charger = (
@@ -681,17 +699,19 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Fall 3: Laddaren redan laddar. Justera bara strömmen vid behov.
                 elif charger_status == EASEE_STATUS_CHARGING:
                     if needs_current_update_on_charger:
-                        _LOGGER.debug(
-                            "Laddning pågår (Mode: %s). Justerar ström till %.1fA.",
-                            self.active_control_mode_internal,
-                            current_to_set_on_charger,
-                        )
+                        if self._debug_logging:
+                            _LOGGER.debug(
+                                "Laddning pågår (Mode: %s). Justerar ström till %.1fA.",
+                                self.active_control_mode_internal,
+                                current_to_set_on_charger,
+                            )
                         await set_dynamic_current_on_charger(current_to_set_on_charger)
                     else:
-                        _LOGGER.debug(
-                            "Laddning pågår med korrekt ström (Mode: %s).",
-                            self.active_control_mode_internal,
-                        )
+                        if self._debug_logging:
+                            _LOGGER.debug(
+                                "Laddning pågår med korrekt ström (Mode: %s).",
+                                self.active_control_mode_internal,
+                            )
 
                 # Fall 4: Laddaren väntar på start, men INTE pga manuell paus (dvs ström för låg).
                 elif (
@@ -726,11 +746,12 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 # Fall 5: Annan status, t.ex. frånkopplad, error. Logga bara.
                 else:
-                    _LOGGER.debug(
-                        "Laddning begärd (Mode: %s), men laddarstatus är '%s'. Inväntar lämpligt tillstånd.",
-                        self.active_control_mode_internal,
-                        charger_status,
-                    )
+                    if self._debug_logging:
+                        _LOGGER.debug(
+                            "Laddning begärd (Mode: %s), men laddarstatus är '%s'. Inväntar lämpligt tillstånd.",
+                            self.active_control_mode_internal,
+                            charger_status,
+                        )
 
                 # Uppdatera sessionstiden om en ny session startar
                 if (
@@ -870,11 +891,12 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # Om ingen laddning begärs och laddaren inte aktivt laddar:
                 else:
                     # Logga nuvarande status.
-                    _LOGGER.debug(
-                        "Ingen laddning begärd och laddaren är inte aktivt laddande (status: %s). Anledning till ingen laddning: %s",
-                        charger_status,
-                        reason,
-                    )
+                    if self._debug_logging:
+                        _LOGGER.debug(
+                            "Ingen laddning begärd och laddaren är inte aktivt laddande (status: %s). Anledning till ingen laddning: %s",
+                            charger_status,
+                            reason,
+                        )
                     # Om en session var aktiv men laddaren nu har en oväntad status (inte redo, väntar, pausad),
                     # återställ sessionen för att undvika felaktig sessionsdata.
                     if (
@@ -899,12 +921,14 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Denna metod är en del av DataUpdateCoordinator och anropas periodiskt för att hämta och bearbeta data.
     # Den förväntas returnera en dictionary med data som kan användas av sensorer/entiteter.
     async def _async_update_data(self) -> dict[str, Any]:
-        # Loggar ett debug-meddelande som indikerar att uppdateringscykeln har startat.
-        _LOGGER.debug("Koordinatorn kör _async_update_data")
         # Uppdaterar koordinatorns interna konfiguration (self.config) genom att slå samman
         # den ursprungliga konfigurationen (self.entry.data) med eventuella användarändrade alternativ (self.entry.options).
         # Options har företräde om samma nyckel finns i båda.
         self.config = self.entry.data | self.entry.options
+
+        # Loggar ett debug-meddelande som indikerar att uppdateringscykeln har startat.
+        if self._debug_logging:
+            _LOGGER.debug("Koordinatorn kör _async_update_data")
 
         # Kontrollerar om de interna entiteterna (switchar, nummer etc. som skapas av denna integration) har blivit lösta (deras entity_id har hittats).
         if not self._internal_entities_resolved:
@@ -1146,6 +1170,9 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             reason_for_action = (
                 f"SoC ({current_soc_percent}%) har nått målet ({target_soc_limit}%)."
             )
+            # Logga meddelandet här på INFO-nivå
+            _LOGGER.info(reason_for_action)
+
             if self.session_start_time_utc is not None:
                 self._reset_session_data(reason_for_action)
             self._solar_surplus_start_time = None
@@ -1296,14 +1323,15 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_update_time = current_time
 
         # Loggar en sammanfattning av uppdateringscykelns resultat.
-        _LOGGER.debug(
-            "Uppdateringscykel klar. Styrningsläge: %s. Ska ladda: %s. Ström: %.1fA. Anledning: %s. Laddarstatus: %s",
-            self.active_control_mode,  # Det slutgiltiga styrningsläget.
-            self.should_charge_flag,  # Om laddning ska ske.
-            self.target_charge_current_a,  # Den målsatta laddströmmen.
-            reason_for_action,  # Den huvudsakliga anledningen till beslutet.
-            charger_status,  # Laddarens status.
-        )
+        if self._debug_logging:
+            _LOGGER.debug(
+                "Uppdateringscykel klar. Styrningsläge: %s. Ska ladda: %s. Ström: %.1fA. Anledning: %s. Laddarstatus: %s",
+                self.active_control_mode,  # Det slutgiltiga styrningsläget.
+                self.should_charge_flag,  # Om laddning ska ske.
+                self.target_charge_current_a,  # Den målsatta laddströmmen.
+                reason_for_action,  # Den huvudsakliga anledningen till beslutet.
+                charger_status,  # Laddarens status.
+            )
 
         # Returnerar en dictionary med data som kan användas av sensorer kopplade till denna koordinator.
         return self._current_coordinator_data(reason_for_action)
@@ -1345,9 +1373,10 @@ class SmartEVChargingCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 dyn_current_sensor_id, is_config_key=False
             )
             if dyn_current is not None and dyn_current == 0:
-                _LOGGER.debug(
-                    "Laddaren är manuellt pausad (status: awaiting_start, dyn_current: 0A)."
-                )
+                if self._debug_logging:
+                    _LOGGER.debug(
+                        "Laddaren är manuellt pausad (status: awaiting_start, dyn_current: 0A)."
+                    )
                 return True
 
         return False
