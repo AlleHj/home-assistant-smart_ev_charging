@@ -1,4 +1,4 @@
-# File version: 2025-05-30 0.1.35
+# File version: 2025-06-05 0.2.0
 """Constants for the Smart EV Charging integration."""
 
 DOMAIN = "smart_ev_charging"
@@ -13,7 +13,6 @@ CONF_SOLAR_PRODUCTION_SENSOR = "solar_production_sensor_id"
 CONF_SOLAR_SCHEDULE_ENTITY = "solar_schedule_entity_id"
 CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR = "charger_max_current_limit_sensor_id"
 CONF_CHARGER_DYNAMIC_CURRENT_SENSOR = "charger_dynamic_current_sensor_id"
-CONF_EV_POWER_SENSOR = "ev_power_sensor_id"
 CONF_SCAN_INTERVAL = "scan_interval_seconds"
 CONF_CHARGER_ENABLED_SWITCH_ID = "charger_enabled_switch_id"
 

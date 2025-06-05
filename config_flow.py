@@ -1,4 +1,4 @@
-# File version: 2025-05-30 0.1.35
+# File version: 2025-06-05 0.2.0 // ÄNDRA HÄR
 """Config flow for Smart EV Charging integration."""
 
 import voluptuous as vol
@@ -36,7 +36,6 @@ from .const import (
     CONF_SOLAR_SCHEDULE_ENTITY,
     CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR,
     CONF_CHARGER_DYNAMIC_CURRENT_SENSOR,
-    CONF_EV_POWER_SENSOR,
     CONF_SCAN_INTERVAL,
     CONF_CHARGER_ENABLED_SWITCH_ID,
     CONF_EV_SOC_SENSOR,
@@ -59,7 +58,6 @@ ALL_CONF_KEYS = [
     CONF_SOLAR_SCHEDULE_ENTITY,
     CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR,
     CONF_CHARGER_DYNAMIC_CURRENT_SENSOR,
-    CONF_EV_POWER_SENSOR,
     CONF_SCAN_INTERVAL,
     CONF_EV_SOC_SENSOR,
     CONF_TARGET_SOC_LIMIT,
@@ -73,7 +71,6 @@ OPTIONAL_ENTITY_CONF_KEYS = [
     CONF_SOLAR_SCHEDULE_ENTITY,
     CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR,
     CONF_CHARGER_DYNAMIC_CURRENT_SENSOR,
-    CONF_EV_POWER_SENSOR,
     CONF_EV_SOC_SENSOR,
 ]
 MAYBE_SELECTOR_CONF_KEYS = OPTIONAL_ENTITY_CONF_KEYS + [CONF_TARGET_SOC_LIMIT]
@@ -160,14 +157,6 @@ def _build_common_schema(
     defined_fields_with_selectors[CONF_CHARGER_DYNAMIC_CURRENT_SENSOR] = (
         _get_current_or_repop_value(CONF_CHARGER_DYNAMIC_CURRENT_SENSOR),
         EntitySelector(EntitySelectorConfig(domain="sensor", multiple=False)),
-    )
-    defined_fields_with_selectors[CONF_EV_POWER_SENSOR] = (
-        _get_current_or_repop_value(CONF_EV_POWER_SENSOR),
-        EntitySelector(
-            EntitySelectorConfig(
-                domain="sensor", device_class=SensorDeviceClass.POWER, multiple=False
-            )
-        ),
     )
     defined_fields_with_selectors[CONF_EV_SOC_SENSOR] = (
         _get_current_or_repop_value(CONF_EV_SOC_SENSOR),

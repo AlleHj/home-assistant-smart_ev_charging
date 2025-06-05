@@ -1,4 +1,4 @@
-# File version: 2025-05-28 0.1.2
+# File version: 2025-06-05 0.2.0
 import logging
 from typing import Any
 
