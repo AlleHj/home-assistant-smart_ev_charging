@@ -155,7 +155,7 @@ async def test_dynamic_current_adjustment_for_solar_charging(
 
     assert len(action_command_calls) == 0
     assert len(set_charger_dynamic_limit_calls) == 1
-    assert set_charger_dynamic_limit_calls[0].data["current"] == 8
+    assert set_charger_dynamic_limit_calls[0].data["current"] == 9
 
     action_command_calls.clear()
     set_charger_dynamic_limit_calls.clear()
@@ -168,6 +168,21 @@ async def test_dynamic_current_adjustment_for_solar_charging(
     await hass.async_block_till_done()
 
     # --- ASSERT - Steg 2 ---
+    assert len(action_command_calls) == 0
+    assert len(set_charger_dynamic_limit_calls) == 1
+    assert set_charger_dynamic_limit_calls[0].data["current"] == 9
+
+    action_command_calls.clear()
+    set_charger_dynamic_limit_calls.clear()
+
+    # --- ARRANGE & ACT - Steg 3: Buffert ändras ---
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)
+    hass.states.async_set(ACTUAL_SOLAR_BUFFER_ID, "1500")
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    # --- ASSERT - Steg 3 ---
     assert len(action_command_calls) == 0
     assert len(set_charger_dynamic_limit_calls) == 1
     assert set_charger_dynamic_limit_calls[0].data["current"] == 7

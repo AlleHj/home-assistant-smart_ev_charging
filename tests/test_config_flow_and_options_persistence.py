@@ -24,7 +24,6 @@ from custom_components.smart_ev_charging.const import (
     CONF_PRICE_SENSOR,
     CONF_EV_SOC_SENSOR,
     CONF_TARGET_SOC_LIMIT,
-    CONF_EV_POWER_SENSOR,
     CONF_SCAN_INTERVAL,
     CONF_DEBUG_LOGGING,
     DEFAULT_SCAN_INTERVAL_SECONDS,
@@ -45,8 +44,6 @@ MOCK_STATUS_SENSOR_ID = "sensor.mock_charger_status_flow"
 MOCK_POWER_SWITCH_ID = "switch.mock_charger_power_flow"
 MOCK_PRICE_SENSOR_ID = "sensor.mock_price_sensor_flow"
 MOCK_SOC_SENSOR_ID_INITIAL = "sensor.mock_ev_soc_initial"
-MOCK_EV_POWER_SENSOR_ID_NEW = "sensor.mock_ev_power_new"
-
 MOCK_SURCHARGE_HELPER_ID = "input_number.mock_surcharge"
 MOCK_TIME_SCHEDULE_ID = "schedule.mock_charging_time"
 MOCK_HOUSE_POWER_ID = "sensor.mock_house_power"
@@ -105,7 +102,7 @@ async def test_setup_and_options_modification_flow(hass: HomeAssistant):
         3. MODIFIERA OPTIONS:
            - I det öppnade alternativflödet, förbered ny input:
              - `CONF_EV_SOC_SENSOR` sätts till `None` (simulerar borttagning).
-             - `CONF_EV_POWER_SENSOR` får ett nytt sensor-ID.
+             - `CONF_CHARGER_DYNAMIC_CURRENT_SENSOR` får ett nytt sensor-ID.
              - Andra tidigare ifyllda värden (som SoC-gräns och obligatoriska fält)
                behålls. Ytterligare valfria fält fylls i med mock-värden för
                att simulera ett mer komplett formulär, då options-flödet sparar alla fält.
@@ -125,7 +122,6 @@ async def test_setup_and_options_modification_flow(hass: HomeAssistant):
     hass.states.async_set(MOCK_POWER_SWITCH_ID, STATE_ON)
     hass.states.async_set(MOCK_PRICE_SENSOR_ID, "0.50")
     hass.states.async_set(MOCK_SOC_SENSOR_ID_INITIAL, "75")
-    hass.states.async_set(MOCK_EV_POWER_SENSOR_ID_NEW, "3000")
     hass.states.async_set(MOCK_SURCHARGE_HELPER_ID, "0.1")
     hass.states.async_set(MOCK_TIME_SCHEDULE_ID, STATE_ON)
     hass.states.async_set(MOCK_HOUSE_POWER_ID, "1000")
@@ -158,7 +154,6 @@ async def test_setup_and_options_modification_flow(hass: HomeAssistant):
         CONF_SOLAR_SCHEDULE_ENTITY: None,
         CONF_CHARGER_MAX_CURRENT_LIMIT_SENSOR: None,
         CONF_CHARGER_DYNAMIC_CURRENT_SENSOR: None,
-        CONF_EV_POWER_SENSOR: None,
         CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL_SECONDS,
         CONF_DEBUG_LOGGING: False,
     }
@@ -176,7 +171,7 @@ async def test_setup_and_options_modification_flow(hass: HomeAssistant):
     assert entry.data[CONF_CHARGER_DEVICE] == MOCK_EASEE_DEVICE_ID
     assert entry.data[CONF_EV_SOC_SENSOR] == MOCK_SOC_SENSOR_ID_INITIAL
     assert entry.data[CONF_TARGET_SOC_LIMIT] == random_soc_limit
-    assert entry.data[CONF_EV_POWER_SENSOR] is None
+    assert entry.data[CONF_CHARGER_DYNAMIC_CURRENT_SENSOR] is None
     assert not entry.options  # Inga options satta initialt
 
     # --- Del 2: Öppna Options första gången ---
@@ -201,7 +196,6 @@ async def test_setup_and_options_modification_flow(hass: HomeAssistant):
         CONF_DEBUG_LOGGING: entry.data.get(CONF_DEBUG_LOGGING, False),
         # Ändringar:
         CONF_EV_SOC_SENSOR: None,  # Simulerar rensat fält
-        CONF_EV_POWER_SENSOR: MOCK_EV_POWER_SENSOR_ID_NEW,  # Nytt värde
         # Fyll i andra valfria fält som din config_flow.py:s OptionsFlow hanterar
         # (den sparar ALL_CONF_KEYS i options).
         # Om de var None i entry.data, och ska förbli "tomma" för EntitySelector,
@@ -235,7 +229,7 @@ async def test_setup_and_options_modification_flow(hass: HomeAssistant):
         updated_entry.options[CONF_EV_SOC_SENSOR] is None
     )  # Verifiera att den är borttagen/None
     assert (
-        updated_entry.options[CONF_EV_POWER_SENSOR] == MOCK_EV_POWER_SENSOR_ID_NEW
+        updated_entry.options[CONF_CHARGER_DYNAMIC_CURRENT_SENSOR] == MOCK_DYN_CURRENT_LIMIT_ID
     )  # Verifiera nytt värde
     assert (
         updated_entry.options[CONF_TARGET_SOC_LIMIT] == random_soc_limit

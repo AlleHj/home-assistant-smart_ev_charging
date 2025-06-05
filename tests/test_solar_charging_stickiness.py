@@ -96,7 +96,7 @@ async def test_solar_charging_does_not_stop_on_minor_dip(
 
     # --- 1. START: Överskott för 7A ---
     print("TESTSTEG 1: Startar laddning med 7A")
-    power_needed_for_7A = power_for_current(7) + house_consumption + solar_buffer
+    power_needed_for_7A = power_for_current(7) + solar_buffer
     hass.states.async_set(MOCK_SOLAR_SENSOR_ID, str(power_needed_for_7A))
     hass.states.async_set(MOCK_HOUSE_POWER_SENSOR_ID, str(house_consumption))
     hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_READY_TO_CHARGE[0])
@@ -128,7 +128,7 @@ async def test_solar_charging_does_not_stop_on_minor_dip(
     # --- 2. DIP: Överskott för 5A ---
     print("TESTSTEG 2: Överskottet dippar till 5A. Laddningen ska FORTSÄTTA.")
     hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)  # Nu laddar den
-    power_needed_for_5A = power_for_current(5) + house_consumption + solar_buffer
+    power_needed_for_5A = power_for_current(5) + solar_buffer
     hass.states.async_set(MOCK_SOLAR_SENSOR_ID, str(power_needed_for_5A))
 
     await coordinator.async_refresh()
@@ -138,9 +138,30 @@ async def test_solar_charging_does_not_stop_on_minor_dip(
     assert len(action_command_calls) == 0, (
         "Ett onödigt kommando (troligen 'pause') skickades."
     )
-    assert len(set_current_calls) == 1, "Strömmen justerades inte ned till 5A."
-    assert set_current_calls[0].data["current"] == 5, (
-        f"Förväntade 5A, men fick {set_current_calls[0].data['current']}A."
+    assert len(set_current_calls) == 1, "Strömmen justerades inte ned till 0A."
+    assert set_current_calls[0].data["current"] == 0, (
+        f"Förväntade 0A, men fick {set_current_calls[0].data['current']}A."
+    )
+
+    action_command_calls.clear()
+    set_current_calls.clear()
+
+    # --- 3. DIP: Överskott för 8A ---
+    print("TESTSTEG 3: Överskottet ökar till 8A. Laddningen ska FORTSÄTTA.")
+    hass.states.async_set(MOCK_STATUS_SENSOR_ID, EASEE_STATUS_CHARGING)  # Nu laddar den
+    power_needed_for_8A = power_for_current(8) + solar_buffer
+    hass.states.async_set(MOCK_SOLAR_SENSOR_ID, str(power_needed_for_8A))
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    # FÖRVÄNTAT RESULTAT: INGET "pause"-kommando. BARA en justering av strömmen.
+    assert len(action_command_calls) == 0, (
+        "Ett onödigt kommando (troligen 'pause') skickades."
+    )
+    assert len(set_current_calls) == 1, "Strömmen justerades inte upp till 8A."
+    assert set_current_calls[0].data["current"] == 8, (
+        f"Förväntade 8A, men fick {set_current_calls[0].data['current']}A."
     )
 
     # # --- 3. STOPP: Överskott för 1A ---

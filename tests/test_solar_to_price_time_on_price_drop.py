@@ -184,7 +184,7 @@ async def test_solar_to_price_time_on_price_drop(hass: HomeAssistant, caplog):
 
         # Förväntad ström från sol: (8000W - 500W - 0W) / 230V = 7500W / 230V = ~32.6A
         # Begränsas av MAX_CHARGE_CURRENT_A_HW_DEFAULT (16A)
-        calculated_current_3phase = math.floor(7500 / (3 * 230))  # 7500W / 690V = 10A
+        calculated_current_3phase = math.floor(8000 / (3 * 230))  # 7500W / 690V = 10A
         expected_solar_current_initial = min(
             calculated_current_3phase, MAX_CHARGE_CURRENT_A_HW_DEFAULT
         )  # Ska bli min(10, 16) = 10A

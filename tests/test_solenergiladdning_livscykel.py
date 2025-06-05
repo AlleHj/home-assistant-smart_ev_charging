@@ -156,7 +156,7 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     print("\nTESTSTEG: Otillräckligt överskott")
     # FÖRUTSÄTTNINGAR: Minsta laddström 6A. Effekt för 6A trefas = 6A * 3 faser * 230V = 4140W.
     # Produktion sätts för att ge ett överskott strax under detta (t.ex. 4130W).
-    # Tillgängligt överskott = Produktion - Husförbrukning - Buffer.
+    # Tillgängligt överskott = Produktion - Buffer.
     min_solar_current_amps = 6
     power_for_min_current = (
         min_solar_current_amps * PHASES * VOLTAGE_PHASE_NEUTRAL
@@ -165,9 +165,9 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     solar_buffer = 200
     # Produktion som ger ett överskott på (power_for_min_current - 10W)
     production_for_insufficient = (
-        (power_for_min_current - 10) + house_consumption + solar_buffer
-    )  # 4130 + 1000 + 200 = 5330W
-    # Faktiskt överskott blir: 5330 - 1000 - 200 = 4130W. Ström = floor(4130 / 690) = 5A.
+        power_for_min_current - 10
+    ) + solar_buffer  # 4130 + 200 = 4330W
+    # Faktiskt överskott blir: 4330 - 200 = 4130W. Ström = floor(4130 / 690) = 5A.
 
     hass.states.async_set(
         MOCK_SOLAR_SENSOR_ID,
@@ -195,11 +195,10 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
     # SYFTE: Verifiera att laddning startar omedelbart vid tillräckligt överskott
     print("\nTESTSTEG 4: Laddning startar direkt vid tillräckligt överskott")
     # FÖRUTSÄTTNINGAR: Produktion sätts för att ge 7A överskott.
-    # (7A * 3 * 230V) + 1000W (hus) + 200W (buffer) = 4830W + 1200W = 6030W.
+    # (7A * 3 * 230V) + 200W (buffer) = 4830W + 200W = 5030W.
     current_target_amps_immediate_start = 7
     production_for_immediate_start = (
         (current_target_amps_immediate_start * PHASES * VOLTAGE_PHASE_NEUTRAL)
-        + house_consumption  # Använd variabeln från tidigare i testet
         + solar_buffer  # Använd variabeln från tidigare i testet
     )
     hass.states.async_set(
@@ -259,10 +258,8 @@ async def test_solar_charging_full_lifecycle(hass: HomeAssistant, freezer):
 
     current_target_amps_dynamic_up = 10
     production_for_10A_solar = (
-        (current_target_amps_dynamic_up * PHASES * VOLTAGE_PHASE_NEUTRAL)
-        + house_consumption
-        + solar_buffer
-    )
+        current_target_amps_dynamic_up * PHASES * VOLTAGE_PHASE_NEUTRAL
+    ) + solar_buffer
     hass.states.async_set(
         MOCK_SOLAR_SENSOR_ID,
         str(production_for_10A_solar),
